@@ -10,7 +10,11 @@ static void onNewWindow(void* self, std::any data) {
     // data is guaranteed
     const auto PWINDOW = std::any_cast<PHLWINDOW>(data);
 
-    if (!PWINDOW->m_bX11DoesntWantBorders) {
-        std::cout << "brah";
-    }
+    HyprlandAPI::addNotification(
+        PHANDLE,
+	"hello world",
+	CColor {1.0, 0.2, 0.2, 1.0},
+	10000
+    );
+
 }
