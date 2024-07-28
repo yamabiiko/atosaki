@@ -1,9 +1,9 @@
 [repository]
 name = "Kuukiyomu"
 authors = ["yamabiiko"]
-commit_pins = [
-    ["918d8340afd652b011b937d29d5eea0be08467f5", "c37a3f6977a4a971b9dda8802bee6d01260e9ca5"]
-]
+#commit_pins = [
+#    ["918d8340afd652b011b937d29d5eea0be08467f5", ""]
+#]
 
 [kuukiyomu]
 description = "Session manager for hyprland"
