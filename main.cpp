@@ -66,8 +66,10 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     HyprlandAPI::reloadConfig();
 
     HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:save", saveSession);
+    HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
 
     auto g_pSessionData = std::make_unique<SessionData>();
+    HyprlandAPI::reloadConfig();
 
     return {"kuukiyomu", "A smooth hacky session manager plugin", "yamabiiko", "0.1"};
 
