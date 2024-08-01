@@ -65,8 +65,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     auto g_pSessionData = std::make_unique<SessionData>();
     bool save = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:save", saveSession);
     bool load = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
-    if(!(save && load)) {
-    	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] could not add dispatcher", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    if(save && load) {
+    	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] added dispatchers", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
     }
 
     HyprlandAPI::reloadConfig();
@@ -74,3 +74,5 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     return {"kuukiyomu", "A smooth hacky session manager plugin", "yamabiiko", "0.1"};
 
 }
+
+APICALL EXPORT void PLUGIN_EXIT() {}
