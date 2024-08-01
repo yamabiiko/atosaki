@@ -9,6 +9,8 @@ static void onNewWindow(PHLWINDOW window) {
 
     g_pSessionData->addWindowData(window);
 
+    HyprlandAPI::addNotification(PHANDLE, "added window", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+
 }
 
 static void onWindowChange(PHLWINDOW window) {
