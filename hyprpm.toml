@@ -2,7 +2,7 @@
 name = "Kuukiyomu"
 authors = ["yamabiiko"]
 commit_pins = [
-    ["918d8340afd652b011b937d29d5eea0be08467f5", "a05f99bc92b4313a8712c9c483bc2c1b362a909c"]
+    ["918d8340afd652b011b937d29d5eea0be08467f5", "660a03e4dd248ccaf78fec8f09c3e0b75d213d42"]
 ]
 
 [kuukiyomu]
