@@ -62,6 +62,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                                                           [&](void* self, SCallbackInfo& info, std::any data) { onWindowChange(std::any_cast<PHLWINDOW>(data)); });
 
 
+    HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] re-init 0", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
     auto g_pSessionData = std::make_unique<SessionData>();
     bool save = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:save", saveSession);
     bool load = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
