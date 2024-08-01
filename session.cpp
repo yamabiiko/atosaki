@@ -30,7 +30,24 @@ void SessionData::updateWindow(PHLWINDOW& to_update) {
 
 void SessionData::addWindowData(PHLWINDOW& to_add) {
     m_windowData.push_back(to_add);
-    HyprlandAPI::addNotification(PHANDLE, to_add->m_szTitle, CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    HyprWindowData to_add_hypr = { 
+	    std::array<uint16_t, 2> {to_add->m_vRealPosition.goal().x, to_add->m_vRealPosition.goal().y},
+	    std::array<uint16_t, 2> {to_add->m_vRealSize.goal().x, to_add->m_vRealSize.goal().y},
+	    to_add->m_iMonitorID,
+	    to_add->m_pWorkspace, 
+	    to_add->m_szClass, 
+	    to_add->m_szTitle,
+	    to_add->m_szInitialClass,
+	    to_add->m_szInitialTitle,
+	    to_add->getPID(),
+	    0, // shell_id
+	    "", // cwd
+	    to_add->m_bPinned,
+	    to_add->m_bIsFullscreen,
+    };
+
+    m_hyprWindowData.push_back(to_add_hypr);
+
 }
 
 void SessionData::delWindowData(PHLWINDOW& to_del) {
