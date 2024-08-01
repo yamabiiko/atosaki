@@ -61,12 +61,11 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     static auto P3 = HyprlandAPI::registerCallbackDynamic(PHANDLE, "windowUpdateRules",
                                                           [&](void* self, SCallbackInfo& info, std::any data) { onWindowChange(std::any_cast<PHLWINDOW>(data)); });
 
-    HyprlandAPI::reloadConfig();
 
+    auto g_pSessionData = std::make_unique<SessionData>();
     HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:save", saveSession);
     HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
 
-    auto g_pSessionData = std::make_unique<SessionData>();
     HyprlandAPI::reloadConfig();
 
     return {"kuukiyomu", "A smooth hacky session manager plugin", "yamabiiko", "0.1"};
