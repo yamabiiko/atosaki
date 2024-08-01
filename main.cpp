@@ -48,8 +48,6 @@ static void saveSession(std::string args) {
 
 }
 
-static void loadSession() {
-}
 
 APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     PHANDLE = handle;
