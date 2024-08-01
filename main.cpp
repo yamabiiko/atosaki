@@ -22,7 +22,7 @@ static void onCloseWindow(PHLWINDOW window) {
 
 static void loadSession(std::string args) {
 
-    std::ifstream ifs("session.bin", std::ios::binary);
+    std::ifstream ifs(args, std::ios::binary);
     {
         boost::archive::binary_iarchive ia(ifs);
         // write class instance to archive
@@ -35,8 +35,9 @@ static void loadSession(std::string args) {
     HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] loaded session successfully!", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
 }
 
+// probably unsafe?
 static void saveSession(std::string args) {
-    std::ofstream ofs("session.bin", std::ios::binary);
+    std::ofstream ofs(args, std::ios::binary);
 
     // save data to archive
     {
@@ -63,16 +64,16 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     static auto P3 = HyprlandAPI::registerCallbackDynamic(PHANDLE, "windowUpdateRules",
                                                           [&](void* self, SCallbackInfo& info, std::any data) { onWindowChange(std::any_cast<PHLWINDOW>(data)); });
 
-
-    HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] re-init 0", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
     auto g_pSessionData = std::make_unique<SessionData>();
-    //bool save = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:save", saveSession);
-    //bool load = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
-    //if(!(save && load)) {
-        //HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] could not add dispatchers", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
-    //}
+    bool save = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:save", saveSession);
+    bool load = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
 
-    HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] re-init", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    if(save && load) {
+    	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] init succefull", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    } else {
+    	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] some dispatcher failed", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    }
+	
 
     HyprlandAPI::reloadConfig();
 

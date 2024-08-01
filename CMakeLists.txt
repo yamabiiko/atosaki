@@ -12,6 +12,7 @@ file(GLOB_RECURSE SRC "*.cpp")
 add_library(kuukiyomu SHARED ${SRC})
 
 find_package(PkgConfig REQUIRED)
+find_package(Boost REQUIRED serialization)
 pkg_check_modules(deps REQUIRED IMPORTED_TARGET
     hyprland
     libdrm
@@ -21,6 +22,6 @@ pkg_check_modules(deps REQUIRED IMPORTED_TARGET
     wayland-server
     xkbcommon
 )
-target_link_libraries(kuukiyomu PRIVATE rt PkgConfig::deps)
+target_link_libraries(kuukiyomu PRIVATE rt PkgConfig::deps Boost::serialization)
 
 install(TARGETS kuukiyomu)
