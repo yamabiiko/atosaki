@@ -1,4 +1,4 @@
-#include "session.hpp"
+#include "globals.hpp"
 #include <fstream>
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
@@ -23,13 +23,14 @@ static void onCloseWindow(PHLWINDOW window) {
 static void loadSession(std::string args) {
 
     std::ifstream ifs(args, std::ios::binary);
-    {
+    
+    try {
         boost::archive::binary_iarchive ia(ifs);
-        // write class instance to archive
-        //
-        
-        ia >> *g_pSessionData;
-        // archive and stream closed when destructors are called
+        ia >> *g_pSessionData;  // Ensure g_pSessionData is initialized
+    } catch (const boost::archive::archive_exception& e) {
+        std::cerr << "Archive exception: " << e.what() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Standard exception: " << e.what() << std::endl;
     }
 
     HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] loaded session successfully!", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
@@ -45,10 +46,14 @@ static void saveSession(std::string args) {
         // write class instance to archive
         //
         
-        oa << *g_pSessionData;
+        oa << g_pSessionData.get();
         // archive and stream closed when destructors are called
     }
 
+}
+
+static void printSession(std::string args) {
+    g_pSessionData->printWindows();
 }
 
 
@@ -64,20 +69,23 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     static auto P3 = HyprlandAPI::registerCallbackDynamic(PHANDLE, "windowUpdateRules",
                                                           [&](void* self, SCallbackInfo& info, std::any data) { onWindowChange(std::any_cast<PHLWINDOW>(data)); });
 
-    auto g_pSessionData = std::make_unique<SessionData>();
+    g_pSessionData = std::make_unique<SessionData>();
     bool save = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:save", saveSession);
     bool load = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
+    bool print = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:print", printSession);
 
-    if(save && load) {
-    	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] init succefull", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    if(save && load && print) {
+    	HyprlandAPI::addNotification(PHANDLE, "<kuukiyomu> init succesfull kamelias", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
     } else {
     	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] some dispatcher failed", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
     }
+
+    Debug::log(LOG, "[kuukiyomu] testi");
 	
 
     HyprlandAPI::reloadConfig();
 
-    return {"kuukiyomu", "A smooth hacky session manager plugin", "yamabiiko", "0.1"};
+    return {"kuukiyomu", "A session manager plugin", "yamabiiko", "0.1"};
 
 }
 

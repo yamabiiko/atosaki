@@ -6,6 +6,9 @@ project(kuukiyomu
 )
 
 set(CMAKE_CXX_STANDARD 23)
+add_compile_definitions(WLR_USE_UNSTABLE)
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/usr/include/pixman-1 -I/usr/include/libdrm -I/usr/include/hyprland/protocols")
 
 file(GLOB_RECURSE SRC "*.cpp")
 
@@ -15,13 +18,13 @@ find_package(PkgConfig REQUIRED)
 find_package(Boost REQUIRED serialization)
 pkg_check_modules(deps REQUIRED IMPORTED_TARGET
     hyprland
-    libdrm
     libinput
     libudev
+    libdrm
     pixman-1
-    wayland-server
     xkbcommon
 )
-target_link_libraries(kuukiyomu PRIVATE rt PkgConfig::deps Boost::serialization)
+target_link_libraries(kuukiyomu PRIVATE rt Boost::serialization)
+
 
 install(TARGETS kuukiyomu)

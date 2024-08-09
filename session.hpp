@@ -1,26 +1,21 @@
 #pragma once
 
-#define WLR_USE_UNSTABLE
-
 #include <hyprland/src/desktop/Window.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/array.hpp>
 
-#include "globals.hpp"
-
-
 struct HyprWindowData {
-    std::array<uint16_t, 2> at;
-    std::array<uint16_t, 2> size;
-    uint8_t monitor;
-    uint8_t workspace;
-    std::string windowClass;
-    std::string title;
+    std::array<int, 2> at;
+    std::array<int, 2> size;
+    uint64_t monitor;
+    int workspace;
+    std::string wClass;
+    std::string wTitle;
     std::string initialClass;
     std::string initialTitle;
-    int32_t pid;
+    pid_t pid;
     int32_t shell_id;
     std::string cwd;
     bool pinned;
@@ -32,8 +27,8 @@ struct HyprWindowData {
         ar & size;
         ar & monitor;
         ar & workspace;
-        ar & windowClass;
-        ar & title;
+        ar & wClass;
+        ar & wTitle;
         ar & initialClass;
         ar & initialTitle;
         ar & pid;
@@ -56,10 +51,9 @@ class SessionData {
     }
 
   public:
-    SessionData();
     virtual ~SessionData();
 
-    virtual std::vector<PHLWINDOW>    getWindowData();
+    //virtual std::vector<PHLWINDOW>    getWindowData();
 
 
     virtual void                       updateWindow(PHLWINDOW&);
@@ -67,11 +61,12 @@ class SessionData {
     virtual void                       addWindowData(PHLWINDOW&);
 
     virtual void                       delWindowData(PHLWINDOW&);
+    virtual void 		       printWindows();
 
   private:
 
     int version;
 
-    std::vector<PHLWINDOW> m_windowData;
+    //std::vector<PHLWINDOW> m_windowData;
     std::vector<HyprWindowData> m_hyprWindowData;
 };
