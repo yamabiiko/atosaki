@@ -28,6 +28,7 @@ static void loadSession(std::string args) {
         boost::archive::binary_iarchive ia(ifs);
         ia >> *g_pSessionData;  // Ensure g_pSessionData is initialized
     }
+    g_pSessionData->openWindows();
 
     HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] loaded session successfully!", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
 }

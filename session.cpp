@@ -55,6 +55,14 @@ void SessionData::delWindowData(PHLWINDOW& to_del) {
     //}
 }
 
+void SessionData::openWindows() {
+    for(auto & window: m_hyprWindowData) {
+       HyprlandAPI::invokeHyprctlCommand("dispatch",
+           std::format("exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo; alacritty",
+	       window.workspace, window.size[0], window.size[1], window.at[0], window.at[1]));
+    }
+}
+
 void SessionData::printWindows() {
     for(auto & window: m_hyprWindowData) {
         Debug::log(LOG, window.wClass);

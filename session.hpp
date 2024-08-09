@@ -62,6 +62,7 @@ class SessionData {
 
     virtual void                       delWindowData(PHLWINDOW&);
     virtual void 		       printWindows();
+    virtual void 		       openWindows();
 
   private:
 
