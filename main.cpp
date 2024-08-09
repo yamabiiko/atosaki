@@ -24,13 +24,9 @@ static void loadSession(std::string args) {
 
     std::ifstream ifs(args, std::ios::binary);
     
-    try {
+    {
         boost::archive::binary_iarchive ia(ifs);
         ia >> *g_pSessionData;  // Ensure g_pSessionData is initialized
-    } catch (const boost::archive::archive_exception& e) {
-        std::cerr << "Archive exception: " << e.what() << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Standard exception: " << e.what() << std::endl;
     }
 
     HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] loaded session successfully!", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
@@ -46,7 +42,7 @@ static void saveSession(std::string args) {
         // write class instance to archive
         //
         
-        oa << g_pSessionData.get();
+        oa << *g_pSessionData;
         // archive and stream closed when destructors are called
     }
 

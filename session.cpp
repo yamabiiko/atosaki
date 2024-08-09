@@ -25,6 +25,9 @@ void SessionData::updateWindow(PHLWINDOW& to_update) {
 
 void SessionData::addWindowData(PHLWINDOW& to_add) {
 
+    int shell_id = 0;
+    std::string cwd = "";
+
     m_hyprWindowData.emplace_back(
         std::array<int, 2> {(int) to_add->m_vRealPosition.goal().x, (int)to_add->m_vRealPosition.goal().y},
 	std::array<int, 2> {(int) to_add->m_vRealSize.goal().x, (int)to_add->m_vRealSize.goal().y},
@@ -35,8 +38,8 @@ void SessionData::addWindowData(PHLWINDOW& to_add) {
         to_add->m_szInitialClass,
         to_add->m_szInitialTitle,
         to_add->getPID(),
-        0, // shell_id
-        "", // cwd
+        shell_id, // shell_id
+        cwd, // cwd
         to_add->m_bPinned,
         to_add->m_bIsFullscreen
     );
@@ -54,6 +57,6 @@ void SessionData::delWindowData(PHLWINDOW& to_del) {
 
 void SessionData::printWindows() {
     for(auto & window: m_hyprWindowData) {
-        Debug::log(LOG, "[kuukiyomu] window");
+        Debug::log(LOG, window.wClass);
     }
 }
