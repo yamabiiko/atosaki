@@ -14,14 +14,21 @@ static void onNewWindow(PHLWINDOW window) {
 }
 
 static void onWindowChange(PHLWINDOW window) {
+    //g_pSessionData->addWindowData(window);
+
+    //HyprlandAPI::addNotification(PHANDLE, "added window", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
 }
 
 static void onCloseWindow(PHLWINDOW window) {
+    g_pSessionData->delWindowData(window);
+
+    HyprlandAPI::addNotification(PHANDLE, "removed window", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
 
 }
 
 static void loadSession(std::string args) {
 
+    g_pSessionData->replaceSession();
     std::ifstream ifs(args, std::ios::binary);
     
     {
@@ -33,8 +40,9 @@ static void loadSession(std::string args) {
     HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] loaded session successfully!", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
 }
 
-// probably unsafe?
 static void saveSession(std::string args) {
+
+    g_pSessionData->customSave();
     std::ofstream ofs(args, std::ios::binary);
 
     // save data to archive
@@ -71,15 +79,16 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     bool load = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
     bool print = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:print", printSession);
 
+    g_pSessionData->loadConfig();
+
     if(save && load && print) {
-    	HyprlandAPI::addNotification(PHANDLE, "<kuukiyomu> init succesfull kamelias", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    	HyprlandAPI::addNotification(PHANDLE, "<kuukiyomu> init succesfull v019", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
     } else {
     	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] some dispatcher failed", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
     }
 
     Debug::log(LOG, "[kuukiyomu] testi");
 	
-
     HyprlandAPI::reloadConfig();
 
     return {"kuukiyomu", "A session manager plugin", "yamabiiko", "0.1"};

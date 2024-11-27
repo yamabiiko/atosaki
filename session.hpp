@@ -7,6 +7,7 @@
 #include <boost/serialization/array.hpp>
 
 struct HyprWindowData {
+    uint64_t window_id;
     std::array<int, 2> at;
     std::array<int, 2> size;
     uint64_t monitor;
@@ -23,6 +24,7 @@ struct HyprWindowData {
 
     template<class Archive>
     void serialize(Archive & ar, const unsigned int version) {
+        ar & window_id;
         ar & at;
         ar & size;
         ar & monitor;
@@ -37,6 +39,17 @@ struct HyprWindowData {
         ar & pinned;
         ar & fullscreen;
     }
+};
+
+struct AppEntry {
+    std::string aClass;
+    std::string aTitle;
+    std::string save_command;
+};
+
+struct Config {
+    std::vector<AppEntry> m_appEntries;
+    //std::vector<TerminalEntry> m_appEntries;
 };
 
 
@@ -63,6 +76,10 @@ class SessionData {
     virtual void                       delWindowData(PHLWINDOW&);
     virtual void 		       printWindows();
     virtual void 		       openWindows();
+    virtual void 		       closeWindows();
+    virtual void 		       loadConfig();
+    virtual void 		       customSave();
+    virtual void 		       replaceSession();
 
   private:
 
@@ -70,4 +87,5 @@ class SessionData {
 
     //std::vector<PHLWINDOW> m_windowData;
     std::vector<HyprWindowData> m_hyprWindowData;
+    Config m_config;
 };
