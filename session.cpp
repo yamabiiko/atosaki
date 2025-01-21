@@ -3,6 +3,7 @@
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/desktop/Window.hpp>
 #include <thread>
+#include <regex>
 #include <toml++/toml.h>
 
 
@@ -15,13 +16,30 @@ SessionData::~SessionData() {
 //}
     
 void SessionData::updateWindow(PHLWINDOW& to_update) {
+    int shell_id = 0;
+    std::string cwd = "";
 
-    //auto same_window = [to_update](const PHLWINDOW& window) { return window.get() == to_update.get(); };
-    //auto it = std::find_if(m_windowData.begin(), m_windowData.end(), same_window);
+    auto same_window = [to_update](const HyprWindowData& window) { return window.window_id == (uint64_t) to_update.get(); };
+    auto it = std::find_if(m_hyprWindowData.begin(), m_hyprWindowData.end(), same_window);
 
-    //if (it != m_windowData.end()) {
-        //*it = to_update;
-    //}
+    if (it != m_hyprWindowData.end()) {
+        *it =    HyprWindowData {
+	(uint64_t) to_update.get(),
+        std::array<int, 2> {(int) to_update->m_vRealPosition.goal().x, (int)to_update->m_vRealPosition.goal().y},
+	std::array<int, 2> {(int) to_update->m_vRealSize.goal().x, (int)to_update->m_vRealSize.goal().y},
+	to_update->m_pMonitor,
+	to_update->workspaceID(), 
+	to_update->m_szClass, 
+        to_update->m_szTitle,
+        to_update->m_szInitialClass,
+        to_update->m_szInitialTitle,
+        to_update->getPID(),
+        shell_id, // shell_id
+        cwd, // cwd
+        to_update->m_bPinned,
+        to_update->isFullscreen()
+        };
+    }
 }
 
 void SessionData::addWindowData(PHLWINDOW& to_add) {
@@ -45,6 +63,9 @@ void SessionData::addWindowData(PHLWINDOW& to_add) {
         to_add->m_bPinned,
         to_add->isFullscreen()
     );
+
+    Debug::log(LOG, std::format("SAVED WINDOW size {}, {}; pos {}, {};", (int) to_add->m_vRealPosition.goal().x, (int)to_add->m_vRealPosition.goal().y,
+        (int) to_add->m_vRealSize.goal().x, (int)to_add->m_vRealSize.goal().y));
 }
 
 void SessionData::delWindowData(PHLWINDOW& to_del) {
@@ -59,9 +80,18 @@ void SessionData::delWindowData(PHLWINDOW& to_del) {
 
 void SessionData::openWindows() {
     for(auto & window: m_hyprWindowData) {
-       HyprlandAPI::invokeHyprctlCommand("dispatch",
-           std::format("exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo; alacritty",
-	       window.workspace, window.size[0], window.size[1], window.at[0], window.at[1]));
+        HyprlandAPI::invokeHyprctlCommand("dispatch",
+            std::format("exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo;] alacritty",
+	        window.workspace, window.size[0], window.size[1], window.at[0], window.at[1]));
+        Debug::log(LOG, std::format("exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo; alacritty",
+	    window.workspace, window.size[0], window.size[1], window.at[0], window.at[1]));
+        for(auto & app_entry: m_config.m_appEntries) {
+            std::regex c(app_entry.aClass);
+            std::regex t(app_entry.aTitle);
+            if (std::regex_search(window.wClass, c) && std::regex_search(window.wTitle, t)) {
+                std::system(app_entry.restore_cmd.c_str());
+            }
+        }
     }
 }
 
@@ -82,9 +112,10 @@ void SessionData::loadConfig() {
             if (const auto* table = app.as_table()) {
                 auto cls = table->get_as<std::string>("class");
                 auto title = table->get_as<std::string>("title");
-                auto save_command = table->get_as<std::string>("save_command");
+                auto save_cmd = table->get_as<std::string>("save_cmd");
+                auto restore_cmd = table->get_as<std::string>("restore_cmd");
 
-                auto new_entry = AppEntry { cls->get(), title->get(), save_command->get() };
+                auto new_entry = AppEntry { cls->get(), title->get(), save_cmd->get(), restore_cmd->get() };
 
                 m_config.m_appEntries.emplace_back(new_entry);
 
@@ -99,9 +130,10 @@ void SessionData::loadConfig() {
 void SessionData::customSave() {
     for(auto & window: m_hyprWindowData) {
         for(auto & app_entry: m_config.m_appEntries) {
-            std::regex r(app_entry.aClass);
-            if (std::regex_search(window.wClass, r)) {
-                std::system(app_entry.save_command.c_str());
+            std::regex c(app_entry.aClass);
+            std::regex t(app_entry.aTitle);
+            if (std::regex_search(window.wClass, c) && std::regex_search(window.wTitle, t)) {
+                std::system(app_entry.save_cmd.c_str());
             }
         }
     }

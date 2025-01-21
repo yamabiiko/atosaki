@@ -44,7 +44,8 @@ struct HyprWindowData {
 struct AppEntry {
     std::string aClass;
     std::string aTitle;
-    std::string save_command;
+    std::string save_cmd;
+    std::string restore_cmd;
 };
 
 struct Config {

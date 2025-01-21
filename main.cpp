@@ -9,20 +9,20 @@ static void onNewWindow(PHLWINDOW window) {
 
     g_pSessionData->addWindowData(window);
 
-    HyprlandAPI::addNotification(PHANDLE, "added window", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    HyprlandAPI::addNotification(PHANDLE, "added window", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
 
 }
 
 static void onWindowChange(PHLWINDOW window) {
-    //g_pSessionData->addWindowData(window);
+    g_pSessionData->updateWindow(window);
 
-    //HyprlandAPI::addNotification(PHANDLE, "added window", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    //HyprlandAPI::addNotification(PHANDLE, "added window", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
 }
 
 static void onCloseWindow(PHLWINDOW window) {
     g_pSessionData->delWindowData(window);
 
-    HyprlandAPI::addNotification(PHANDLE, "removed window", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    HyprlandAPI::addNotification(PHANDLE, "removed window", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
 
 }
 
@@ -37,7 +37,7 @@ static void loadSession(std::string args) {
     }
     g_pSessionData->openWindows();
 
-    HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] loaded session successfully!", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] loaded session successfully!", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
 }
 
 static void saveSession(std::string args) {
@@ -82,9 +82,9 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_pSessionData->loadConfig();
 
     if(save && load && print) {
-    	HyprlandAPI::addNotification(PHANDLE, "<kuukiyomu> init succesfull v019", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    	HyprlandAPI::addNotification(PHANDLE, "<kuukiyomu> init succesfull v019", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
     } else {
-    	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] some dispatcher failed", CColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] some dispatcher failed", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
     }
 
     Debug::log(LOG, "[kuukiyomu] testi");

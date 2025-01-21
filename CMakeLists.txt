@@ -11,6 +11,7 @@ add_compile_definitions(WLR_USE_UNSTABLE)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I/usr/include/pixman-1 -I/usr/include/libdrm -I/usr/include/hyprland/protocols")
 
 file(GLOB_RECURSE SRC "*.cpp")
+list(FILTER SOURCES EXCLUDE REGEX "CMakeFiles/.*")
 
 add_library(kuukiyomu SHARED ${SRC})
 
