@@ -19,6 +19,8 @@ struct HyprWindowData {
     pid_t pid;
     int32_t shell_id;
     std::string cwd;
+    std::string exe;
+    std::string cmdline;
     bool pinned;
     bool fullscreen;
 
@@ -36,6 +38,8 @@ struct HyprWindowData {
         ar & pid;
         ar & shell_id;
         ar & cwd;
+        ar & exe;
+        ar & cmdline;
         ar & pinned;
         ar & fullscreen;
     }
@@ -50,6 +54,7 @@ struct AppEntry {
 
 struct Config {
     std::vector<AppEntry> m_appEntries;
+    std::string terminal;
     //std::vector<TerminalEntry> m_appEntries;
 };
 

@@ -42,7 +42,7 @@ static void loadSession(std::string args) {
 
 static void saveSession(std::string args) {
 
-    g_pSessionData->customSave();
+    g_pSessionData->save();
     std::ofstream ofs(args, std::ios::binary);
 
     // save data to archive

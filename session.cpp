@@ -42,6 +42,40 @@ void SessionData::updateWindow(PHLWINDOW& to_update) {
     }
 }
 
+std::vector<int> get_child_pids(int pid) {
+    std::vector<int> children;
+    std::ostringstream path;
+    path << "/proc/" << pid << "/task/" << pid << "/children";
+
+    std::ifstream file(path.str());
+    if (!file.is_open()) {
+        throw std::runtime_error("Unable to open: " + path.str());
+    }
+
+    int child_pid;
+    while (file >> child_pid) {
+        children.push_back(child_pid);
+    }
+    return children;
+}
+
+std::string<int> get_proc_cwd(int pid) {
+    std::vector<int> children;
+    std::ostringstream path;
+    path << "/proc/" << pid << "/task/" << pid << "/children";
+
+    std::ifstream file(path.str());
+    if (!file.is_open()) {
+        throw std::runtime_error("Unable to open: " + path.str());
+    }
+
+    int child_pid;
+    while (file >> child_pid) {
+        children.push_back(child_pid);
+    }
+    return children;
+}
+
 void SessionData::addWindowData(PHLWINDOW& to_add) {
 
     int shell_id = 0;
@@ -60,13 +94,19 @@ void SessionData::addWindowData(PHLWINDOW& to_add) {
         to_add->getPID(),
         shell_id, // shell_id
         cwd, // cwd
+	cwd, // exe
+	cwd, // cmdline
         to_add->m_bPinned,
         to_add->isFullscreen()
     );
 
+
     Debug::log(LOG, std::format("SAVED WINDOW size {}, {}; pos {}, {};", (int) to_add->m_vRealPosition.goal().x, (int)to_add->m_vRealPosition.goal().y,
         (int) to_add->m_vRealSize.goal().x, (int)to_add->m_vRealSize.goal().y));
+
 }
+
+
 
 void SessionData::delWindowData(PHLWINDOW& to_del) {
     auto same_window = [to_del](const HyprWindowData& window) { return window.window_id == (uint64_t) to_del.get(); };
@@ -106,8 +146,11 @@ void SessionData::loadConfig() {
     Debug::log(LOG, "[kuukiyomu] loading conf");
     try {
         auto config = toml::parse_file("/home/yamabiko/.config/kuukiyomu/config.toml");
-        auto title = config["terminal"].value<std::string>();
+	std::optional<std::string> terminal = config["terminal"].value<std::string>();
         auto apps = config["apps"].as_array();
+	if(terminal) {
+	    m_config.terminal = *terminal;
+	}
         for (const auto& app : *apps) {
             if (const auto* table = app.as_table()) {
                 auto cls = table->get_as<std::string>("class");
@@ -127,8 +170,16 @@ void SessionData::loadConfig() {
     }
 }
 
-void SessionData::customSave() {
+void SessionData::save() {
     for(auto & window: m_hyprWindowData) {
+    	std::regex e(m_config.terminal);
+
+    	if(std::regex_search(windon.initialClass, e)) {
+    	    auto child_pid = get_child_pids(to_add->getPID());
+	    for(auto & pid : child_pid) {
+	        Debug::log(LOG, std::format("CHILD PID {}", pid));
+	    }
+    	}
         for(auto & app_entry: m_config.m_appEntries) {
             std::regex c(app_entry.aClass);
             std::regex t(app_entry.aTitle);
