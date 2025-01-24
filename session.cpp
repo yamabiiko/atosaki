@@ -36,6 +36,8 @@ void SessionData::updateWindow(PHLWINDOW& to_update) {
         to_update->getPID(),
         shell_id, // shell_id
         cwd, // cwd
+	cwd, // exe
+	cwd, // cmdline
         to_update->m_bPinned,
         to_update->isFullscreen()
         };
@@ -59,21 +61,65 @@ std::vector<int> get_child_pids(int pid) {
     return children;
 }
 
-std::string<int> get_proc_cwd(int pid) {
-    std::vector<int> children;
+std::string get_proc_cwd(int pid) {
     std::ostringstream path;
-    path << "/proc/" << pid << "/task/" << pid << "/children";
+    path << "/proc/" << pid << "/cwd";
 
-    std::ifstream file(path.str());
+    // Buffer to store the symbolic link target
+    char cwd[PATH_MAX];
+    ssize_t len = readlink(path.str().c_str(), cwd, sizeof(cwd) - 1);
+    if (len == -1) {
+        throw std::runtime_error("Unable to read symbolic link: " + path.str());
+    }
+
+    // Null-terminate the buffer since readlink does not do it
+    cwd[len] = '\0';
+
+    return std::string(cwd);
+}
+
+std::string get_exe_fullpath(int pid) {
+    std::ostringstream path;
+    path << "/proc/" << pid << "/exe";
+
+    // Buffer to store the symbolic link target
+    char exe_path[PATH_MAX];
+    ssize_t len = readlink(path.str().c_str(), exe_path, sizeof(exe_path) - 1);
+    if (len == -1) {
+        throw std::runtime_error("Unable to read symbolic link: " + path.str());
+    }
+
+    // Null-terminate the buffer since readlink does not do it
+    exe_path[len] = '\0';
+
+    return std::string(exe_path);
+}
+
+std::string get_cmdline(int pid) {
+    std::ostringstream path;
+    path << "/proc/" << pid << "/cmdline";
+
+    std::ifstream file(path.str(), std::ios::in | std::ios::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Unable to open: " + path.str());
     }
 
-    int child_pid;
-    while (file >> child_pid) {
-        children.push_back(child_pid);
+    // Read the entire content of the file
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    // Replace null characters with spaces for readability
+    for (char& c : content) {
+        if (c == '\0') {
+            c = ' ';
+        }
     }
-    return children;
+
+    // Trim trailing spaces, if any
+    if (!content.empty() && content.back() == ' ') {
+        content.pop_back();
+    }
+
+    return content;
 }
 
 void SessionData::addWindowData(PHLWINDOW& to_add) {
@@ -120,18 +166,48 @@ void SessionData::delWindowData(PHLWINDOW& to_del) {
 
 void SessionData::openWindows() {
     for(auto & window: m_hyprWindowData) {
-        HyprlandAPI::invokeHyprctlCommand("dispatch",
-            std::format("exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo;] alacritty",
-	        window.workspace, window.size[0], window.size[1], window.at[0], window.at[1]));
-        Debug::log(LOG, std::format("exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo; alacritty",
-	    window.workspace, window.size[0], window.size[1], window.at[0], window.at[1]));
-        for(auto & app_entry: m_config.m_appEntries) {
-            std::regex c(app_entry.aClass);
-            std::regex t(app_entry.aTitle);
-            if (std::regex_search(window.wClass, c) && std::regex_search(window.wTitle, t)) {
-                std::system(app_entry.restore_cmd.c_str());
+	std::string dispatch;
+	if(window.shell_id) {
+	    std::string exe;
+	    bool found = false;
+            for(auto & cmd_entry: m_config.m_cmdEntries) {
+               std::regex s(cmd_entry.exe);
+	       if(std::regex_search(window.exe, s)) {
+	           if(!cmd_entry.restore_cmd.empty()) {
+		     exe = cmd_entry.restore_cmd;
+		     found = true;
+		   }
+	       }
+	    }
+	    if(!found) {
+	        dispatch = std::format("alacritty --working-directory {} -e bash -c '{} ; bash -i'", window.cwd,  window.cmdline);
+	    } else {
+    		std::regex pattern("\\$\\$shell_id\\$\\$");
+		exe = std::regex_replace(exe, pattern, std::to_string(window.shell_id));
+	        dispatch = std::format("alacritty --working-directory {} -e bash -c '{} ; bash -i'", window.cwd, exe);
+	    }
+	} else {
+	    bool found = false;
+	    std::string exe;
+            for(auto & app_entry: m_config.m_appEntries) {
+                std::regex c(app_entry.aClass);
+                std::regex t(app_entry.aTitle);
+                if (std::regex_search(window.wClass, c) && std::regex_search(window.wTitle, t)) {
+                    exe = app_entry.restore_cmd;
+		    found = true;
+                }
             }
-        }
+	    if (found) {
+	        dispatch = exe;
+	    } else {
+		dispatch = std::format("cd {}; {} {}", window.cwd, window.exe, window.cmdline);
+	    }
+	}
+        HyprlandAPI::invokeHyprctlCommand("dispatch",
+            std::format("exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo;] {}",
+	        window.workspace, window.size[0], window.size[1], window.at[0], window.at[1], dispatch));
+        Debug::log(LOG, std::format("exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo; {}",
+	    window.workspace, window.size[0], window.size[1], window.at[0], window.at[1], dispatch));
     }
 }
 
@@ -148,6 +224,7 @@ void SessionData::loadConfig() {
         auto config = toml::parse_file("/home/yamabiko/.config/kuukiyomu/config.toml");
 	std::optional<std::string> terminal = config["terminal"].value<std::string>();
         auto apps = config["apps"].as_array();
+        auto cmds = config["cmds"].as_array();
 	if(terminal) {
 	    m_config.terminal = *terminal;
 	}
@@ -164,6 +241,17 @@ void SessionData::loadConfig() {
 
             }
         }
+	for (const auto& cmd: *cmds) {
+	    if (const auto *table = cmd.as_table()) {
+	       auto exe = table->get_as<std::string>("exe");
+               auto save_cmd = table->get_as<std::string>("save_cmd");
+               auto restore_cmd = table->get_as<std::string>("restore_cmd");
+
+               auto new_entry = TerminalEntry { exe->get(), save_cmd->get(), restore_cmd->get() };
+
+               m_config.m_cmdEntries.emplace_back(new_entry);
+	    }
+	}
     } catch (const toml::parse_error& err) {
         Debug::log(LOG, "[kuukiyomu] LOAD CONF FAILED");
         Debug::log(LOG, std::format("[kuukiyomu] err: {}", err.description()));
@@ -174,18 +262,42 @@ void SessionData::save() {
     for(auto & window: m_hyprWindowData) {
     	std::regex e(m_config.terminal);
 
-    	if(std::regex_search(windon.initialClass, e)) {
-    	    auto child_pid = get_child_pids(to_add->getPID());
-	    for(auto & pid : child_pid) {
-	        Debug::log(LOG, std::format("CHILD PID {}", pid));
+    	if(std::regex_search(window.initialClass, e)) {
+    	    auto shell_pid = get_child_pids(window.pid);
+	    window.shell_id = shell_pid.front();
+	    for(auto & pid_s : shell_pid) {
+	        window.cwd = get_proc_cwd(pid_s);
+    	    	auto children = get_child_pids(pid_s);
+	    	for(auto & pid_c : children) {
+		   window.cwd = get_proc_cwd(pid_c);
+		   window.exe = get_exe_fullpath(pid_c);
+		   window.cmdline = get_cmdline(pid_c);
+        	   Debug::log(LOG, std::format("PID {}", window.cmdline));
+        	   Debug::log(LOG, std::format("EXE {}", window.exe));
+        	   for(auto & cmd_entry: m_config.m_cmdEntries) {
+            	       std::regex s(cmd_entry.exe);
+		       if(std::regex_search(window.exe, s)) {
+    			   std::regex pattern("\\$\\$shell_id\\$\\$");
+                	   std::system(std::regex_replace(cmd_entry.save_cmd, pattern, std::to_string(window.shell_id)).c_str());
+		       }
+		   }
+		}
 	    }
-    	}
-        for(auto & app_entry: m_config.m_appEntries) {
-            std::regex c(app_entry.aClass);
-            std::regex t(app_entry.aTitle);
-            if (std::regex_search(window.wClass, c) && std::regex_search(window.wTitle, t)) {
-                std::system(app_entry.save_cmd.c_str());
+    	} else {
+	    bool found = false;
+            for(auto & app_entry: m_config.m_appEntries) {
+                std::regex c(app_entry.aClass);
+                std::regex t(app_entry.aTitle);
+                if (std::regex_search(window.wClass, c) && std::regex_search(window.wTitle, t)) {
+                    std::system(app_entry.save_cmd.c_str());
+		    found = true;
+		    break;
+                }
             }
+
+	   window.cwd = get_proc_cwd(window.pid);
+	   window.exe = get_exe_fullpath(window.pid);
+	   window.cmdline = get_cmdline(window.pid);
         }
     }
 }

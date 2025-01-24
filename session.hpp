@@ -52,10 +52,16 @@ struct AppEntry {
     std::string restore_cmd;
 };
 
+struct TerminalEntry {
+    std::string exe;
+    std::string save_cmd;
+    std::string restore_cmd;
+};
+
 struct Config {
     std::vector<AppEntry> m_appEntries;
     std::string terminal;
-    //std::vector<TerminalEntry> m_appEntries;
+    std::vector<TerminalEntry> m_cmdEntries;
 };
 
 
@@ -84,7 +90,7 @@ class SessionData {
     virtual void 		       openWindows();
     virtual void 		       closeWindows();
     virtual void 		       loadConfig();
-    virtual void 		       customSave();
+    virtual void 		       save();
     virtual void 		       replaceSession();
 
   private:
