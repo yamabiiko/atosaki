@@ -1,26 +1,42 @@
 #include "globals.hpp"
 #include <fstream>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
     return HYPRLAND_API_VERSION;
 }
 
-static void onNewWindow(PHLWINDOW window) {
+static void onNewWindow(PHLWINDOW to_add) {
+    HyprWindowData data = {
+        (uint64_t) to_add.get(),
+        std::array<int, 2> {(int) to_add->m_vRealPosition.goal().x, (int)to_add->m_vRealPosition.goal().y},
+	std::array<int, 2> {(int) to_add->m_vRealSize.goal().x, (int)to_add->m_vRealSize.goal().y},
+	to_add->m_pMonitor,
+	to_add->workspaceID(), 
+	to_add->m_szClass, 
+        to_add->m_szTitle,
+        to_add->m_szInitialClass,
+        to_add->m_szInitialTitle,
+        to_add->m_bPinned,
+        to_add->isFullscreen(),
+        to_add->getPID(),
+        0, // shell_id
+        "", // cwd
+	"", // exe
+	"", // cmdline
+    };
 
-    g_pSessionData->addWindowData(window);
-
-    HyprlandAPI::addNotification(PHANDLE, "added window", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    g_pSessionData->sendMessage(data);
+    HyprlandAPI::addNotification(PHANDLE, "status window", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
 
 }
 
 static void onWindowChange(PHLWINDOW window) {
-    g_pSessionData->updateWindow(window);
-
     //HyprlandAPI::addNotification(PHANDLE, "added window", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
 }
 
 static void onCloseWindow(PHLWINDOW window) {
-    g_pSessionData->delWindowData(window);
 
     HyprlandAPI::addNotification(PHANDLE, "removed window", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
 
@@ -28,37 +44,7 @@ static void onCloseWindow(PHLWINDOW window) {
 
 static void loadSession(std::string args) {
 
-    g_pSessionData->replaceSession();
-    std::ifstream ifs(args, std::ios::binary);
-    
-    {
-        boost::archive::binary_iarchive ia(ifs);
-        ia >> *g_pSessionData;  // Ensure g_pSessionData is initialized
-    }
-    g_pSessionData->openWindows();
-
     HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] loaded session successfully!", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
-}
-
-static void saveSession(std::string args) {
-
-    g_pSessionData->save();
-    std::ofstream ofs(args, std::ios::binary);
-
-    // save data to archive
-    {
-        boost::archive::binary_oarchive oa(ofs);
-        // write class instance to archive
-        //
-        
-        oa << *g_pSessionData;
-        // archive and stream closed when destructors are called
-    }
-
-}
-
-static void printSession(std::string args) {
-    g_pSessionData->printWindows();
 }
 
 
@@ -75,20 +61,30 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                                                           [&](void* self, SCallbackInfo& info, std::any data) { onWindowChange(std::any_cast<PHLWINDOW>(data)); });
 
     g_pSessionData = std::make_unique<SessionData>();
-    bool save = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:save", saveSession);
-    bool load = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:load", loadSession);
-    bool print = HyprlandAPI::addDispatcher(PHANDLE, "kuukiyomu:print", printSession);
 
-    g_pSessionData->loadConfig();
+    g_pSessionData->connectToSocket();
 
-    if(save && load && print) {
-    	HyprlandAPI::addNotification(PHANDLE, "<kuukiyomu> init succesfull v019", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
-    } else {
-    	HyprlandAPI::addNotification(PHANDLE, "[kuukiyomu] some dispatcher failed", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
+    HyprlandAPI::addNotification(PHANDLE, "<kuukiyomu> plugin initialized", CHyprColor{0.2, 1.0, 0.2, 1.0}, 5000);
+
+    const std::string socket_path = "/tmp/kuukiyomu_hypr.sock";
+    int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sockfd == -1) {
+        perror("socket");
+        //return false;
     }
 
-    Debug::log(LOG, "[kuukiyomu] testi");
-	
+   // Serialize the struct
+
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, socket_path.c_str(), sizeof(addr.sun_path) - 1);
+
+    if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+        perror("connect");
+        close(sockfd);
+        //return false;
+    }
+
     HyprlandAPI::reloadConfig();
 
     return {"kuukiyomu", "A session manager plugin", "yamabiiko", "0.1"};
