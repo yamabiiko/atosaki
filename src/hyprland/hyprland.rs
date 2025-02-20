@@ -1,48 +1,69 @@
 use crate::manager::{WindowManager, SessionCmd};
 use crate::window::window::{Window, Program};
+use crate::session::session::Session;
 
 use std::{sync::Arc, path::Path, env};
+use std::collections::HashMap;
 use tokio::sync::{Mutex, mpsc};
 use tokio::net::{UnixStream, UnixListener};
-use tokio::io::{self, BufReader, AsyncReadExt, AsyncBufReadExt};
+use tokio::io::{self, BufReader, AsyncReadExt, AsyncWriteExt};
 use std::fs;
 use std::path::PathBuf;
 
 
 const SOCKET_PATH: &str = "/tmp/kuukiyomu_hypr.sock";
 pub struct Hyprland {
-    pub window_data: Arc<Mutex<Vec<Window>>>,
+    pub window_data: Arc<Mutex<Session>>,
     pub sender: mpsc::Sender<SessionCmd>,
 }
 
-impl Hyprland {
-    async fn read_from_socket(stream: &mut UnixStream) -> io::Result<()> {
-        let reader = BufReader::new(stream);
-        let mut lines = reader.lines();
-        while let Some(line) = lines.next_line().await? {
-            todo!()
-        }
-        Ok(())
-    }
+#[repr(u32)] // Ensure the same representation as C++
+#[derive(Debug)]
+enum EventType {
+    Add = 0,
+    Update = 1,
+    Delete = 2,
+}
 
-    async fn handle_client(stream: UnixStream, window_data: Arc<Mutex<Vec<Window>>>) -> std::io::Result<()> {
+impl EventType {
+    fn from_u32(value: u32) -> Option<EventType> {
+        match value {
+            0 => Some(EventType::Add),
+            1 => Some(EventType::Update),
+            2 => Some(EventType::Delete),
+            _ => None,
+        }
+    }
+}
+
+impl Hyprland {
+    async fn handle_client(stream: UnixStream, window_data: Arc<Mutex<Session>>) -> std::io::Result<()> {
         let (reader, _writer) = stream.into_split();
         let mut reader = BufReader::new(reader);
         let mut buffer = vec![0; 1024];
 
         while let Ok(size) = reader.read(&mut buffer).await {
             if size > 0 {
-                println!("Received {} bytes", size);
+                let req = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
                 let data = parse_data(&buffer[..size]);
                 let mut wd = window_data.lock().await;
-                wd.push(data);
+                match EventType::from_u32(req) {
+                    Some(EventType::Add | EventType::Update) => {
+                        wd.update_win(data);
+                        println!("Updated");
+                    },
+                    Some(EventType::Delete) => { 
+                        wd.delete_win(data.address);
+                        println!("Deleted");
+                    },
+                    None => ()
+                }
             }
         }
         Ok(())
     }
 
     pub async fn run(&self, mut rx: mpsc::Receiver<SessionCmd>) -> ()  {
-        println!("UnixWorker running");
         let xdg_runtime_dir = env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR not set");
 
         let hyprland_instance_signature = env::var("HYPRLAND_INSTANCE_SIGNATURE")
@@ -59,21 +80,24 @@ impl Hyprland {
 
         let listener = UnixListener::bind(SOCKET_PATH).unwrap();
 
-        let mut stream = UnixStream::connect(Path::new(&path)).await.unwrap();
+        let mut hypr_sk = UnixStream::connect(Path::new(&path)).await.unwrap();
 
         loop {
             tokio::select! {
                 Some(command) = rx.recv() => {
                     match command {
                         SessionCmd::Open(()) => {
-                            todo!()
+                            let command = format!(
+                                "dispatch exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo;] {}",
+                                1, 100, 100, 100, 100, "alacritty" 
+                            );
+                            hypr_sk.write_all(command.as_bytes()).await.unwrap();
                         }
                         SessionCmd::Close(()) => {
                             todo!()
                         }
                     }
                 },
-                _ = Self::read_from_socket(&mut stream) => {},
                 res = listener.accept() => {
                     let window_data = Arc::clone(&self.window_data);
                     let (stream, _) = res.unwrap();
@@ -98,32 +122,28 @@ impl WindowManager for Hyprland {
 
 fn parse_data(buffer: &[u8]) -> Window {
     use std::convert::TryInto;
-    let mut offset = 0;
+    let mut offset = 4;
     let read_u64 = |offset: &mut usize| -> u64 {
         let val = u64::from_le_bytes(buffer[*offset..*offset+8].try_into().unwrap());
         *offset += 8;
-        println!("{}", val);
         val
     };
     let read_i32 = |offset: &mut usize| -> i32 {
         let val = i32::from_le_bytes(buffer[*offset..*offset+4].try_into().unwrap());
         *offset += 4;
-        println!("{}", val);
         val
     };
 
     let read_string = |offset: &mut usize| -> String {
         let len = u32::from_le_bytes(buffer[*offset..*offset+4].try_into().unwrap());
-        println!("{}", len);
         *offset += 4;
-        println!("{}", offset);
         let str_bytes = &buffer[*offset..*offset + len as usize];
         *offset += len as usize;
-        String::from_utf8_lossy(str_bytes).to_string() // Convert bytes to Rust String
+        String::from_utf8_lossy(str_bytes).to_string()
     };
 
     Window {
-        window_id: read_u64(&mut offset),
+        address: read_u64(&mut offset),
         at: [read_i32(&mut offset), read_i32(&mut offset)],
         size: [read_i32(&mut offset), read_i32(&mut offset)],
         monitor: read_u64(&mut offset),
@@ -136,10 +156,10 @@ fn parse_data(buffer: &[u8]) -> Window {
         fullscreen: buffer[offset + 1] != 0,
         program: Program {
             pid: read_i32(&mut offset),
-            shell_id: read_i32(&mut offset),
-            cwd: read_string(&mut offset),
-            exe: read_string(&mut offset),
-            cmdline: read_string(&mut offset),
+            shell_id: 0,
+            cwd: String::new(),
+            exe: String::new(),
+            cmdline: String::new()
         }
     }
 }

@@ -1,7 +1,9 @@
 //use std::process; // replace with nix ?
+use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Window {
-    pub window_id: u64,
+    pub address: u64,
     pub at: [i32; 2],
     pub size: [i32; 2],
     pub monitor: u64,
@@ -16,6 +18,7 @@ pub struct Window {
     pub program: Program,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Program {
     pub shell_id: i32,
     pub pid: i32,

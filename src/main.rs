@@ -1,15 +1,17 @@
 use std::fs;
+use std::collections::HashMap;
 use toml;
 
 mod config;
 mod manager;
 mod hyprland;
 mod window;
+mod session;
 use config::general::General;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
-use crate::window::window::Window;
+use crate::session::session::Session;
 use crate::hyprland::hyprland::Hyprland;
 use crate::manager::SessionCmd;
 
@@ -24,13 +26,12 @@ async fn main() {
     let config: General = toml::from_str(&cfg_str)
         .expect("Could not parse configuration");
     println!("{:?}", config);
-    let w_data: Vec<Window> = Vec::new();
-
-    let window_data = Arc::new(Mutex::new(w_data));
+    let session = Arc::new(Mutex::new(Session::new()));
 
 
     let (sender, receiver) = mpsc::channel(32);
-    let hyprland = Hyprland { window_data: window_data.clone(), sender: sender.clone() };
+    let hyprland = Hyprland { window_data: session.clone(), sender: sender.clone() };
     tokio::spawn(  async move { hyprland.run(receiver).await } );
-    loop { sender.send(SessionCmd::Open(())).await.unwrap(); sleep(Duration::from_secs(1)).await; }
+    todo!();
+
 }
