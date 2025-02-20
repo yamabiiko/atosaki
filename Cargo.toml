@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serde = "1.0.217"
-serde_derive = "1.0.217"
+serde = "1"
+serde_derive = "1"
+tokio = { version = "1", features = ["sync", "net", "macros", "rt", "rt-multi-thread", "io-util", "time"] }
 toml = "0.8.20"

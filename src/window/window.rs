@@ -1,25 +1,25 @@
 //use std::process; // replace with nix ?
 
-struct WindowData {
-    window_id: u64,
-    at: [u16; 2],
-    size: [u16; 2],
-    monitor: u16,
-    workspace: u16,
-    address: String,
-    class: String,
-    title: String,
-    init_class: String,
-    init_title: String,
-    shell_id: u32,
-    fullscreen: bool,
-    program: Program,
+pub struct Window {
+    pub window_id: u64,
+    pub at: [i32; 2],
+    pub size: [i32; 2],
+    pub monitor: u64,
+    pub workspace: i32,
+    //address: String,
+    pub class: String,
+    pub title: String,
+    pub init_class: String,
+    pub init_title: String,
+    pub pinned: bool,
+    pub fullscreen: bool,
+    pub program: Program,
 }
 
-struct Program {
-    shell_id: u32,
-    cwd: String,
-    exe: String,
-    cmdline: String,
-    pid: u32,
+pub struct Program {
+    pub shell_id: i32,
+    pub pid: i32,
+    pub cwd: String,
+    pub exe: String,
+    pub cmdline: String,
 }
