@@ -1,11 +1,8 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
 use crate::window::window::Window;
 
 pub enum SessionCmd {
-    Open(()),
-    Close(()),
+    Open,
+    Close,
 }
 
 pub trait WindowManager: Send + Sync {

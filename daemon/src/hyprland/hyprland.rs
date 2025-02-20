@@ -3,17 +3,16 @@ use crate::window::window::{Window, Program};
 use crate::session::session::Session;
 
 use std::{sync::Arc, path::Path, env};
-use std::collections::HashMap;
 use tokio::sync::{Mutex, mpsc};
 use tokio::net::{UnixStream, UnixListener};
-use tokio::io::{self, BufReader, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{BufReader, AsyncReadExt, AsyncWriteExt};
 use std::fs;
 use std::path::PathBuf;
 
 
 const SOCKET_PATH: &str = "/tmp/kuukiyomu_hypr.sock";
 pub struct Hyprland {
-    pub window_data: Arc<Mutex<Session>>,
+    pub session: Arc<Mutex<Session>>,
     pub sender: mpsc::Sender<SessionCmd>,
 }
 
@@ -37,7 +36,7 @@ impl EventType {
 }
 
 impl Hyprland {
-    async fn handle_client(stream: UnixStream, window_data: Arc<Mutex<Session>>) -> std::io::Result<()> {
+    async fn handle_client(stream: UnixStream, session: Arc<Mutex<Session>>) -> std::io::Result<()> {
         let (reader, _writer) = stream.into_split();
         let mut reader = BufReader::new(reader);
         let mut buffer = vec![0; 1024];
@@ -46,14 +45,14 @@ impl Hyprland {
             if size > 0 {
                 let req = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
                 let data = parse_data(&buffer[..size]);
-                let mut wd = window_data.lock().await;
+                let mut sess = session.lock().await;
                 match EventType::from_u32(req) {
                     Some(EventType::Add | EventType::Update) => {
-                        wd.update_win(data);
+                        sess.update_win(data);
                         println!("Updated");
                     },
                     Some(EventType::Delete) => { 
-                        wd.delete_win(data.address);
+                        sess.delete_win(data.address);
                         println!("Deleted");
                     },
                     None => ()
@@ -80,29 +79,36 @@ impl Hyprland {
 
         let listener = UnixListener::bind(SOCKET_PATH).unwrap();
 
-        let mut hypr_sk = UnixStream::connect(Path::new(&path)).await.unwrap();
 
         loop {
             tokio::select! {
                 Some(command) = rx.recv() => {
                     match command {
-                        SessionCmd::Open(()) => {
-                            let command = format!(
-                                "dispatch exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo;] {}",
-                                1, 100, 100, 100, 100, "alacritty" 
-                            );
-                            hypr_sk.write_all(command.as_bytes()).await.unwrap();
+                        SessionCmd::Open => {
+                            for (_, window) in &self.session.lock().await.window_data {
+                                let command = format!(
+                                    "dispatch exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo;] {}",
+                                    window.workspace,
+                                    window.size[0], window.size[1],
+                                    window.at[0], window.at[1],
+                                    window.program.cmdline
+                                );
+                                // prepare the command and run as a batch. Don't execute this in
+                                // the mutex lock
+                                let mut hypr_sk = UnixStream::connect(Path::new(&path)).await.unwrap();
+                                hypr_sk.write_all(command.as_bytes()).await.unwrap();
+                            }
                         }
-                        SessionCmd::Close(()) => {
+                        SessionCmd::Close => {
                             todo!()
                         }
                     }
                 },
                 res = listener.accept() => {
-                    let window_data = Arc::clone(&self.window_data);
+                    let sess = Arc::clone(&self.session);
                     let (stream, _) = res.unwrap();
                     tokio::spawn(async move {
-                        if let Err(e) = Self::handle_client(stream, window_data).await {
+                        if let Err(e) = Self::handle_client(stream, sess).await {
                             eprintln!("Error handling client: {}", e);
                         }
                     });

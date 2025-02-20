@@ -24,7 +24,7 @@ impl Session {
         let encoded: Vec<u8> = bincode::serialize(&self.window_data).unwrap();
 
         file.write_all(&encoded)?;
-        todo!()
+        Ok(())
     }
 
     pub fn load(&mut self, file: &str) -> std::io::Result<()> {
@@ -33,7 +33,7 @@ impl Session {
         file.read_to_end(&mut buffer)?;
 
         self.window_data = bincode::deserialize(&buffer).unwrap();
-        todo!()
+        Ok(())
     }
 
     pub fn update_win(&mut self, window: Window) -> bool {
