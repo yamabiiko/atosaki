@@ -16,7 +16,7 @@ pub struct Hyprland {
     pub sender: mpsc::Sender<SessionCmd>,
 }
 
-#[repr(u32)] // Ensure the same representation as C++
+#[repr(u32)]
 #[derive(Debug)]
 enum EventType {
     Add = 0,
@@ -49,11 +49,9 @@ impl Hyprland {
                 match EventType::from_u32(req) {
                     Some(EventType::Add | EventType::Update) => {
                         sess.update_win(data);
-                        println!("Updated");
                     },
                     Some(EventType::Delete) => { 
                         sess.delete_win(data.address);
-                        println!("Deleted");
                     },
                     None => ()
                 }

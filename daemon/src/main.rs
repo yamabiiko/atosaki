@@ -21,21 +21,6 @@ const CONF: &str = "/home/yamabiko/.config/kuukiyomu/config.toml";
 const SOCKET_LIST: &str = "/tmp/kuukiyomud";
 const SAVE_FILE: &str = "/home/yamabiko/example";
 
-async fn handle_client(stream: UnixStream, session: Arc<Mutex<Session>>, sender: mpsc::Sender<SessionCmd>) -> () {
-    let mut reader = BufReader::new(stream);
-    let mut buffer = vec![0; 8];
-    while let Ok(size) = reader.read(&mut buffer).await {
-        if size > 0 {
-            let req = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-            match req {
-                0 => { session.lock().await.save(SAVE_FILE); () },
-                1 => { session.lock().await.load(SAVE_FILE); sender.send(SessionCmd::Open).await; () },
-                2 => println!("Replace"),
-                3.. =>println!("")
-            }
-        }
-    }
-}
 
 #[tokio::main]
 async fn main() {
@@ -59,4 +44,41 @@ async fn main() {
 
     todo!();
 
+}
+
+async fn handle_client(stream: UnixStream, session: Arc<Mutex<Session>>, sender: mpsc::Sender<SessionCmd>) -> () {
+    let mut reader = BufReader::new(stream);
+    let mut buffer = vec![0; 8];
+    while let Ok(size) = reader.read(&mut buffer).await {
+        if size > 0 {
+            let req = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+            match ClientReq::from_u32(req) {
+                Some(ClientReq::Save) => { let _  = session.lock().await.save(SAVE_FILE); () },
+                Some(ClientReq::Load) => { let _ = session.lock().await.load(SAVE_FILE); let _ =sender.send(SessionCmd::Open).await; () },
+                Some(ClientReq::Replace) => {  let _ = sender.send(SessionCmd::Close).await; let _ = session.lock().await.load(SAVE_FILE); 
+                    let _ = sender.send(SessionCmd::Open).await; () },
+                _ => println!("")
+            }
+        }
+    }
+}
+
+
+#[repr(u32)]
+#[derive(Debug)]
+enum ClientReq {
+    Save = 0,
+    Load = 1,
+    Replace = 2,
+}
+
+impl ClientReq {
+    fn from_u32(value: u32) -> Option<ClientReq> {
+        match value {
+            0 => Some(ClientReq::Save),
+            1 => Some(ClientReq::Load),
+            2 => Some(ClientReq::Replace),
+            _ => None,
+        }
+    }
 }
