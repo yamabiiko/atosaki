@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 
 
-const SOCKET_PATH: &str = "/tmp/kuukiyomu_hypr.sock";
+const SOCKET_PATH: &str = "/tmp/atosaki_hypr.sock";
 pub struct Hyprland {
     pub session: Arc<Mutex<Session>>,
     pub sender: mpsc::Sender<SessionCmd>,

@@ -3,7 +3,7 @@ use std::io::prelude::*;
 
 mod commands;
 
-const SOCKET_PATH: &str = "/tmp/kuukiyomud";
+const SOCKET_PATH: &str = "/tmp/atosakid";
 
 fn main() -> std::io::Result<()> {
 

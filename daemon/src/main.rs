@@ -17,8 +17,8 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::io::{BufReader, AsyncReadExt};
 
 
-const CONF: &str = "/home/yamabiko/.config/kuukiyomu/config.toml";
-const SOCKET_LIST: &str = "/tmp/kuukiyomud";
+const CONF: &str = "/home/yamabiko/.config/atosaki/config.toml";
+const SOCKET_LIST: &str = "/tmp/atosakid";
 const SAVE_FILE: &str = "/home/yamabiko/example";
 
 
