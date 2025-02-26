@@ -1,18 +1,24 @@
-use crate::window::window::{Window, Program};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Write, Read};
 
-#[derive(Debug)]
+use crate::window::{Window, WinType};
+
+use serde::{Serialize, Deserialize};
+use crate::config::General;
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Session {
-    pub window_data: HashMap<u64, Window>
+    pub window_data: HashMap<u64, Window>,
+    config: General,
 }
 
 
 impl Session {
-    pub fn new() -> Self {
+    pub fn new(config: General) -> Self {
         Self {
             window_data: HashMap::new(),
+            config,
         }
     }
     pub fn save(&self, file: &str) -> std::io::Result<()> {
@@ -35,7 +41,8 @@ impl Session {
         Ok(())
     }
 
-    pub fn update_win(&mut self, window: Window) -> bool {
+    pub fn update_win(&mut self, mut window: Window) -> bool {
+        window.set_program_type(&self.config);
         self.window_data.insert(window.address, window);
 
         true
@@ -45,28 +52,5 @@ impl Session {
         self.window_data.remove_entry(&addr);
 
         true
-    }
-}
-
-fn get_child_pids(pid: u32) -> Vec<u32> {
-    let path = format!("/proc/{}/task/{}/children", pid, pid);
-    std::fs::read_to_string(path)
-        .ok()
-        .map(|s| s.split_whitespace().filter_map(|p| p.parse().ok()).collect())
-        .unwrap_or_default()
-}
-
-fn get_cmdline(pid: u32) -> Option<String> {
-    let path = format!("/proc/{}/cmdline", pid);
-    match std::fs::read_to_string(&path) {
-        Ok(contents) => {
-            let cmdline = contents.replace('\0', " ").trim().to_string();
-            if cmdline.is_empty() {
-                None
-            } else {
-                Some(cmdline)
-            }
-        }
-        Err(_) => None,
     }
 }

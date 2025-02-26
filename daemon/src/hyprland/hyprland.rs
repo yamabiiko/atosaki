@@ -1,5 +1,5 @@
 use crate::manager::{WindowManager, SessionCmd};
-use crate::window::window::{Window, Program};
+use crate::window::{Window, Program, WinType};
 use crate::session::session::Session;
 
 use std::{sync::Arc, path::Path, env};
@@ -158,6 +158,7 @@ fn parse_data(buffer: &[u8]) -> Window {
         init_title: read_string(&mut offset),
         pinned: buffer[offset] != 0,
         fullscreen: buffer[offset + 1] != 0,
+        wtype: WinType::Plain,
         program: Program {
             pid: read_i32(&mut offset),
             shell_id: 0,

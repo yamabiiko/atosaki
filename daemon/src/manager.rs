@@ -1,4 +1,4 @@
-use crate::window::window::Window;
+use crate::window::Window;
 
 pub enum SessionCmd {
     Open,

@@ -1,3 +1,7 @@
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
+use tokio::net::{UnixListener, UnixStream};
+use tokio::io::{BufReader, AsyncReadExt};
 use std::fs;
 use toml;
 
@@ -6,15 +10,11 @@ mod manager;
 mod hyprland;
 mod window;
 mod session;
-use config::general::General;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
 
 use crate::session::session::Session;
 use crate::hyprland::hyprland::Hyprland;
 use crate::manager::SessionCmd;
-use tokio::net::{UnixListener, UnixStream};
-use tokio::io::{BufReader, AsyncReadExt};
+use crate::config::General;
 
 
 const CONF: &str = "/home/yamabiko/.config/atosaki/config.toml";
@@ -28,8 +28,8 @@ async fn main() {
         .expect("Failed to read file");
     let config: General = toml::from_str(&cfg_str)
         .expect("Could not parse configuration");
-    println!("{:?}", config);
-    let session = Arc::new(Mutex::new(Session::new()));
+
+    let session = Arc::new(Mutex::new(Session::new(config)));
 
 
     let (sender, receiver) = mpsc::channel(32);
