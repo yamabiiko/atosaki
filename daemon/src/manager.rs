@@ -6,6 +6,5 @@ pub enum SessionCmd {
 }
 
 pub trait WindowManager: Send + Sync {
-    async fn send_command(&self, command: SessionCmd );
+    async fn send_command(&self, command: SessionCmd);
 }
-

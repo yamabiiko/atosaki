@@ -1,8 +1,8 @@
 //use std::process; // replace with nix ?
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::config::General;
 use crate::config::general::{App as CApp, Cmd};
+use crate::config::General;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Window {
@@ -35,7 +35,7 @@ pub enum WinType {
     Terminal,
     CliApp(Cmd),
     App(CApp),
-    Plain
+    Plain,
 }
 
 impl Window {
@@ -46,18 +46,20 @@ impl Window {
 
             self.wtype = WinType::Terminal;
             self.program.cmdline = config.terminal.exe.clone();
-            let pids = get_child_pids(self.program.pid);
-            if let Some(cpdi) = pids.first() {
-                self.program.cmdline = get_cmdline(*cpdi).unwrap();
-                self.program.shell_id = self.program.pid;
-                self.program.pid = *cpdi;
-                if let Some(cmd) = config.cmds.iter().find(|cmd| cmd.is_match(&self)) {
-                    self.wtype = WinType::CliApp(cmd.clone());
-                } else {
-                    self.wtype = WinType::Terminal
+            let shell_id = get_child_pids(self.program.pid);
+            if let Some(shell_id) = shell_id.first() {
+                self.program.shell_id = *shell_id;
+                let cpid = get_child_pids(*shell_id);
+                if let Some(cpid) = cpid.first() {
+                    self.program.cmdline = get_cmdline(*cpid).unwrap();
+                    self.program.pid = *cpid;
+                    if let Some(cmd) = config.cmds.iter().find(|cmd| cmd.is_match(&self)) {
+                        self.wtype = WinType::CliApp(cmd.clone());
+                    }
                 }
             }
         } else {
+            self.program.cmdline = get_cmdline(self.program.pid).unwrap();
             if let Some(app) = config.apps.iter().find(|app| app.is_match(&self)) {
                 self.wtype = WinType::App(app.clone());
             } else {
@@ -71,7 +73,11 @@ fn get_child_pids(pid: i32) -> Vec<i32> {
     let path = format!("/proc/{}/task/{}/children", pid, pid);
     std::fs::read_to_string(path)
         .ok()
-        .map(|s| s.split_whitespace().filter_map(|p| p.parse().ok()).collect())
+        .map(|s| {
+            s.split_whitespace()
+                .filter_map(|p| p.parse().ok())
+                .collect()
+        })
         .unwrap_or_default()
 }
 

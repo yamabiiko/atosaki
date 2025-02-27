@@ -1,14 +1,13 @@
-use crate::manager::{WindowManager, SessionCmd};
-use crate::window::{Window, Program, WinType};
+use crate::manager::{SessionCmd, WindowManager};
 use crate::session::session::Session;
+use crate::window::{Program, WinType, Window};
 
-use std::{sync::Arc, path::Path, env};
-use tokio::sync::{Mutex, mpsc};
-use tokio::net::{UnixStream, UnixListener};
-use tokio::io::{BufReader, AsyncReadExt, AsyncWriteExt};
 use std::fs;
 use std::path::PathBuf;
-
+use std::{env, path::Path, sync::Arc};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::{mpsc, Mutex};
 
 const SOCKET_PATH: &str = "/tmp/atosaki_hypr.sock";
 pub struct Hyprland {
@@ -36,7 +35,10 @@ impl EventType {
 }
 
 impl Hyprland {
-    async fn handle_client(stream: UnixStream, session: Arc<Mutex<Session>>) -> std::io::Result<()> {
+    async fn handle_client(
+        stream: UnixStream,
+        session: Arc<Mutex<Session>>,
+    ) -> std::io::Result<()> {
         let (reader, _writer) = stream.into_split();
         let mut reader = BufReader::new(reader);
         let mut buffer = vec![0; 1024];
@@ -49,22 +51,22 @@ impl Hyprland {
                 match EventType::from_u32(req) {
                     Some(EventType::Add | EventType::Update) => {
                         sess.update_win(data);
-                    },
-                    Some(EventType::Delete) => { 
+                    }
+                    Some(EventType::Delete) => {
                         sess.delete_win(data.address);
-                    },
-                    None => ()
+                    }
+                    None => (),
                 }
             }
         }
         Ok(())
     }
 
-    pub async fn run(&self, mut rx: mpsc::Receiver<SessionCmd>) -> ()  {
+    pub async fn run(&self, mut rx: mpsc::Receiver<SessionCmd>) -> () {
         let xdg_runtime_dir = env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR not set");
 
-        let hyprland_instance_signature = env::var("HYPRLAND_INSTANCE_SIGNATURE")
-            .expect("HYPRLAND_INSTANCE_SIGNATURE not set");
+        let hyprland_instance_signature =
+            env::var("HYPRLAND_INSTANCE_SIGNATURE").expect("HYPRLAND_INSTANCE_SIGNATURE not set");
 
         let mut path = PathBuf::from(xdg_runtime_dir);
         path.push("hypr");
@@ -76,7 +78,6 @@ impl Hyprland {
         }
 
         let listener = UnixListener::bind(SOCKET_PATH).unwrap();
-
 
         loop {
             tokio::select! {
@@ -128,18 +129,23 @@ fn parse_data(buffer: &[u8]) -> Window {
     use std::convert::TryInto;
     let mut offset = 4;
     let read_u64 = |offset: &mut usize| -> u64 {
-        let val = u64::from_le_bytes(buffer[*offset..*offset+8].try_into().unwrap());
+        let val = u64::from_le_bytes(buffer[*offset..*offset + 8].try_into().unwrap());
         *offset += 8;
         val
     };
     let read_i32 = |offset: &mut usize| -> i32 {
-        let val = i32::from_le_bytes(buffer[*offset..*offset+4].try_into().unwrap());
+        let val = i32::from_le_bytes(buffer[*offset..*offset + 4].try_into().unwrap());
         *offset += 4;
+        val
+    };
+    let read_bool = |offset: &mut usize| -> bool {
+        let val = buffer[*offset] != 0;
+        *offset += 1;
         val
     };
 
     let read_string = |offset: &mut usize| -> String {
-        let len = u32::from_le_bytes(buffer[*offset..*offset+4].try_into().unwrap());
+        let len = u32::from_le_bytes(buffer[*offset..*offset + 4].try_into().unwrap());
         *offset += 4;
         let str_bytes = &buffer[*offset..*offset + len as usize];
         *offset += len as usize;
@@ -156,15 +162,15 @@ fn parse_data(buffer: &[u8]) -> Window {
         title: read_string(&mut offset),
         init_class: read_string(&mut offset),
         init_title: read_string(&mut offset),
-        pinned: buffer[offset] != 0,
-        fullscreen: buffer[offset + 1] != 0,
+        pinned: read_bool(&mut offset),
+        fullscreen: read_bool(&mut offset),
         wtype: WinType::Plain,
         program: Program {
             pid: read_i32(&mut offset),
             shell_id: 0,
             cwd: String::new(),
             exe: String::new(),
-            cmdline: String::new()
-        }
+            cmdline: String::new(),
+        },
     }
 }
