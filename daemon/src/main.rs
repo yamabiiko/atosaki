@@ -1,4 +1,6 @@
+use anyhow::{anyhow, Context};
 use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
@@ -21,9 +23,11 @@ const SOCKET_LIST: &str = "/tmp/atosakid";
 const SAVE_FILE: &str = "/home/yamabiko/example";
 
 #[tokio::main]
-async fn main() {
-    let cfg_str = fs::read_to_string(CONF).expect("Failed to read file");
-    let config: General = toml::from_str(&cfg_str).expect("Could not parse configuration");
+async fn main() -> anyhow::Result<()> {
+    let cfg_str = fs::read_to_string(CONF).context(format!("Failed to read the file {}", CONF))?;
+
+    let config: General = toml::from_str(&cfg_str)
+        .context(format!("Could not parse the configuration at {}", CONF))?;
 
     let session = Arc::new(Mutex::new(Session::new(config)));
 
@@ -34,24 +38,46 @@ async fn main() {
     };
     tokio::spawn(async move { hyprland.run(receiver).await });
 
-    let listener = UnixListener::bind(SOCKET_LIST).unwrap();
-    while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_client(stream, session.clone(), sender.clone()));
+    if Path::new(SOCKET_LIST).exists() {
+        fs::remove_file(SOCKET_LIST).context(format!(
+            "Failed to remove stale Unix socket file {}",
+            SOCKET_LIST
+        ))?;
     }
 
-    todo!();
+    let listener = UnixListener::bind(SOCKET_LIST)
+        .context(format!("Failed to bind Unix socket {}", SOCKET_LIST))?;
+
+    match listener.accept().await {
+        Ok((stream, _)) => {
+            tokio::spawn(async move {
+                if let Err(e) = handle_client(stream, session, sender).await {
+                    eprintln!("Error handling client: {}", e);
+                }
+            });
+        }
+        Err(e) => {
+            eprintln!("Failed to accept client: {}", e);
+        }
+    }
+
+    Ok(())
 }
 
 async fn handle_client(
     stream: UnixStream,
     session: Arc<Mutex<Session>>,
     sender: mpsc::Sender<SessionCmd>,
-) -> () {
+) -> anyhow::Result<()> {
     let mut reader = BufReader::new(stream);
     let mut buffer = vec![0; 8];
     while let Ok(size) = reader.read(&mut buffer).await {
         if size > 0 {
-            let req = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+            let req = u32::from_le_bytes(
+                buffer[0..4]
+                    .try_into()
+                    .context(format!("Could not read client request type"))?,
+            );
             match ClientReq::from_u32(req) {
                 Some(ClientReq::Save) => {
                     let _ = session.lock().await.save(SAVE_FILE).await;
@@ -68,10 +94,11 @@ async fn handle_client(
                     let _ = sender.send(SessionCmd::Open).await;
                     ()
                 }
-                _ => println!(""),
+                _ => return Err(anyhow!("Unknown client request type")),
             }
         }
     }
+    Ok(())
 }
 
 #[repr(u32)]

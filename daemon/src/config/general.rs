@@ -46,7 +46,8 @@ impl Terminal {
     }
 
     pub fn prepare_cli(&self, cmd: &str, win: &Window) -> String {
-        self.restore.replace("$$cmd$$", &General::replace_cmd(cmd, win))
+        self.restore
+            .replace("$$cmd$$", &General::replace_cmd(cmd, win))
     }
 }
 

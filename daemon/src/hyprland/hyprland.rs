@@ -2,6 +2,7 @@ use crate::manager::{SessionCmd, WindowManager};
 use crate::session::session::Session;
 use crate::window::{Program, WinType, Window};
 
+use anyhow::Context;
 use std::fs;
 use std::path::PathBuf;
 use std::{env, path::Path, sync::Arc};
@@ -35,25 +36,22 @@ impl EventType {
 }
 
 impl Hyprland {
-    async fn handle_client(
-        stream: UnixStream,
-        session: Arc<Mutex<Session>>,
-    ) -> std::io::Result<()> {
+    async fn handle_client(stream: UnixStream, session: Arc<Mutex<Session>>) -> anyhow::Result<()> {
         let (reader, _writer) = stream.into_split();
         let mut reader = BufReader::new(reader);
         let mut buffer = vec![0; 1024];
 
         while let Ok(size) = reader.read(&mut buffer).await {
             if size > 0 {
-                let req = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+                let req = u32::from_le_bytes(buffer[0..4].try_into()?);
                 let data = parse_data(&buffer[..size]);
                 let mut sess = session.lock().await;
                 match EventType::from_u32(req) {
                     Some(EventType::Add | EventType::Update) => {
-                        sess.update_win(data);
+                        sess.update_win(data?);
                     }
                     Some(EventType::Delete) => {
-                        sess.delete_win(data.address);
+                        sess.delete_win(data?.address);
                     }
                     None => (),
                 }
@@ -62,11 +60,11 @@ impl Hyprland {
         Ok(())
     }
 
-    pub async fn run(&self, mut rx: mpsc::Receiver<SessionCmd>) -> () {
-        let xdg_runtime_dir = env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR not set");
+    pub async fn run(&self, mut rx: mpsc::Receiver<SessionCmd>) -> anyhow::Result<()> {
+        let xdg_runtime_dir = env::var("XDG_RUNTIME_DIR").context("XDG_RUNTIME_DIR not set")?;
 
-        let hyprland_instance_signature =
-            env::var("HYPRLAND_INSTANCE_SIGNATURE").expect("HYPRLAND_INSTANCE_SIGNATURE not set");
+        let hyprland_instance_signature = env::var("HYPRLAND_INSTANCE_SIGNATURE")
+            .context("HYPRLAND_INSTANCE_SIGNATURE not set")?;
 
         let mut path = PathBuf::from(xdg_runtime_dir);
         path.push("hypr");
@@ -74,10 +72,14 @@ impl Hyprland {
         path.push(".socket.sock");
 
         if Path::new(SOCKET_PATH).exists() {
-            fs::remove_file(SOCKET_PATH).unwrap();
-        }
+            fs::remove_file(SOCKET_PATH).context(format!(
+                "Failed to remove stale Unix socket file {}",
+                SOCKET_PATH
+            ))?;
+        };
 
-        let listener = UnixListener::bind(SOCKET_PATH).unwrap();
+        let listener = UnixListener::bind(SOCKET_PATH)
+            .context(format!("Failed to bind socket {}", SOCKET_PATH))?;
 
         loop {
             tokio::select! {
@@ -94,8 +96,10 @@ impl Hyprland {
                                 );
                                 // prepare the command and run as a batch. Don't execute this in
                                 // the mutex lock
-                                let mut hypr_sk = UnixStream::connect(Path::new(&path)).await.unwrap();
-                                hypr_sk.write_all(command.as_bytes()).await.unwrap();
+                                let mut hypr_sk = UnixStream::connect(Path::new(&path)).await
+                                    .context(format!("Failed to connect to Hyprland socket {:?}", path))?;
+                                hypr_sk.write_all(command.as_bytes()).await
+                                    .context(format!("Failed to write command {} to Hyprland socket {:?})", command, path))?;
                             }
                         }
                         SessionCmd::Close => {
@@ -105,7 +109,7 @@ impl Hyprland {
                 },
                 res = listener.accept() => {
                     let sess = Arc::clone(&self.session);
-                    let (stream, _) = res.unwrap();
+                    let (stream, _) = res?;
                     tokio::spawn(async move {
                         if let Err(e) = Self::handle_client(stream, sess).await {
                             eprintln!("Error handling client: {}", e);
@@ -125,52 +129,104 @@ impl WindowManager for Hyprland {
     }
 }
 
-fn parse_data(buffer: &[u8]) -> Window {
+fn parse_data(buffer: &[u8]) -> anyhow::Result<Window> {
     use std::convert::TryInto;
     let mut offset = 4;
-    let read_u64 = |offset: &mut usize| -> u64 {
-        let val = u64::from_le_bytes(buffer[*offset..*offset + 8].try_into().unwrap());
+
+    let read_u64 = |offset: &mut usize| -> anyhow::Result<u64> {
+        let bytes: [u8; 8] = buffer
+            .get(*offset..*offset + 8)
+            .context(format!(
+                "Failed to access buffer slice of 8 bytes at offset {}..{}",
+                *offset,
+                *offset + 8
+            ))?
+            .try_into()
+            .context(format!(
+                "Failed to parse u64 from buffer on offset {}",
+                *offset
+            ))?;
+
+        let val = u64::from_le_bytes(bytes);
         *offset += 8;
-        val
+        Ok(val)
     };
-    let read_i32 = |offset: &mut usize| -> i32 {
-        let val = i32::from_le_bytes(buffer[*offset..*offset + 4].try_into().unwrap());
+    let read_i32 = |offset: &mut usize| -> anyhow::Result<i32> {
+        let bytes: [u8; 4] = buffer
+            .get(*offset..*offset + 4)
+            .context(format!(
+                "Failed to access buffer slice of 4 bytes at offset {}..{}",
+                *offset,
+                *offset + 4
+            ))?
+            .try_into()
+            .context(format!(
+                "Failed to parse i32 from buffer on offset {}",
+                *offset
+            ))?;
+
+        let val = i32::from_le_bytes(bytes);
         *offset += 4;
-        val
+        Ok(val)
     };
-    let read_bool = |offset: &mut usize| -> bool {
-        let val = buffer[*offset] != 0;
+
+    let read_bool = |offset: &mut usize| -> anyhow::Result<bool> {
+        let val = buffer.get(*offset).map(|&val| val != 0).context(format!(
+            "Failed to parse bool from buffer on offset {}",
+            *offset
+        ))?;
         *offset += 1;
-        val
+        Ok(val)
     };
 
-    let read_string = |offset: &mut usize| -> String {
-        let len = u32::from_le_bytes(buffer[*offset..*offset + 4].try_into().unwrap());
+    let read_string = |offset: &mut usize| -> anyhow::Result<String> {
+        let bytes: [u8; 4] = buffer
+            .get(*offset..*offset + 4)
+            .context(format!(
+                "Failed to access buffer slice of 4 bytes at offset {}..{}",
+                *offset,
+                *offset + 4
+            ))?
+            .try_into()
+            .context(format!(
+                "Failed to parse string length from buffer on offset {}",
+                *offset
+            ))?;
+        let len = u32::from_le_bytes(bytes);
         *offset += 4;
-        let str_bytes = &buffer[*offset..*offset + len as usize];
+
+        let str_bytes = buffer
+            .get(*offset..*offset + len as usize)
+            .context(format!(
+                "Failed to access string slice of length {} bytes at offset {}..{}",
+                len,
+                *offset,
+                *offset + 4
+            ))?;
+
         *offset += len as usize;
-        String::from_utf8_lossy(str_bytes).to_string()
+        Ok(String::from_utf8_lossy(str_bytes).to_string())
     };
 
-    Window {
-        address: read_u64(&mut offset),
-        at: [read_i32(&mut offset), read_i32(&mut offset)],
-        size: [read_i32(&mut offset), read_i32(&mut offset)],
-        monitor: read_u64(&mut offset),
-        workspace: read_i32(&mut offset),
-        class: read_string(&mut offset),
-        title: read_string(&mut offset),
-        init_class: read_string(&mut offset),
-        init_title: read_string(&mut offset),
-        pinned: read_bool(&mut offset),
-        fullscreen: read_bool(&mut offset),
+    Ok(Window {
+        address: read_u64(&mut offset)?,
+        at: [read_i32(&mut offset)?, read_i32(&mut offset)?],
+        size: [read_i32(&mut offset)?, read_i32(&mut offset)?],
+        monitor: read_u64(&mut offset)?,
+        workspace: read_i32(&mut offset)?,
+        class: read_string(&mut offset)?,
+        title: read_string(&mut offset)?,
+        init_class: read_string(&mut offset)?,
+        init_title: read_string(&mut offset)?,
+        pinned: read_bool(&mut offset)?,
+        fullscreen: read_bool(&mut offset)?,
         wtype: WinType::Plain,
         program: Program {
-            pid: read_i32(&mut offset),
+            pid: read_i32(&mut offset)?,
             shell_id: 0,
             cwd: String::new(),
             exe: String::new(),
             cmdline: String::new(),
         },
-    }
+    })
 }

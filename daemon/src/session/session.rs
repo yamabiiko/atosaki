@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Context};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -21,15 +22,22 @@ impl Session {
             config,
         }
     }
-    pub async fn save(&self, file: &str) -> std::io::Result<()> {
-        let mut file = OpenOptions::new().write(true).append(false).open(file)?;
-        let encoded: Vec<u8> = bincode::serialize(&self.window_data).unwrap();
+    pub async fn save(&self, file: &str) -> anyhow::Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .append(false)
+            .open(file)
+            .context(format!("Cannot open file {} for saving", file))?;
+        let encoded: Vec<u8> = bincode::serialize(&self.window_data)
+            .context(format!("Failed to serialize window data while saving"))?;
 
         let tasks: Vec<_> = self
             .window_data
             .iter()
             .filter_map(|(_, win)| match &win.wtype {
-                WinType::CliApp(cmd) => Some(run_command(General::replace_cmd(&cmd.save_cmd, &win))),
+                WinType::CliApp(cmd) => {
+                    Some(run_command(General::replace_cmd(&cmd.save_cmd, &win)))
+                }
                 WinType::App(app) => Some(run_command(General::replace_cmd(&app.save_cmd, &win))),
                 _ => None,
             })
@@ -39,16 +47,20 @@ impl Session {
             let _ = t.await;
         }
 
-        file.write_all(&encoded)?;
+        file.write_all(&encoded)
+            .context(format!("Failed to write session data to file {:?}", file))?;
         Ok(())
     }
 
-    pub async fn load(&mut self, file: &str) -> std::io::Result<()> {
+    pub async fn load(&mut self, file: &str) -> anyhow::Result<()> {
         let mut file = File::open(file)?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
 
-        self.window_data = bincode::deserialize(&buffer).unwrap();
+        self.window_data = bincode::deserialize(&buffer).context(format!(
+            "Cannot deserialize bincode from saved session file {:?}",
+            file
+        ))?;
 
         let _tasks: Vec<_> = self
             .window_data
@@ -60,9 +72,7 @@ impl Session {
                 }
                 WinType::App(app) => Some(General::replace_cmd(&app.restore_cmd, win)),
 
-                WinType::Terminal => {
-                    None
-                }
+                WinType::Terminal => None,
                 _ => None,
             })
             .collect();
@@ -82,7 +92,7 @@ impl Session {
     }
 }
 
-async fn run_command(cmdline: String) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_command(cmdline: String) -> anyhow::Result<()> {
     let status = Command::new("sh")
         .arg("-c")
         .arg(&cmdline)
@@ -93,11 +103,11 @@ async fn run_command(cmdline: String) -> Result<(), Box<dyn std::error::Error>> 
     if status.success() {
         Ok(())
     } else {
-        Err(format!(
+        Err(anyhow!(format!(
             "Command `{}` failed with exit code {:?}",
             cmdline,
             status.code()
-        )
+        ))
         .into())
     }
 }
