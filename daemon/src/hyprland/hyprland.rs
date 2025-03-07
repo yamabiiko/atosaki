@@ -1,19 +1,15 @@
-use crate::manager::{SessionCmd, WindowManager};
-use crate::session::session::Session;
-use crate::window::{Program, WinType, Window};
+use crate::manager::WindowManager;
+use crate::window::Window;
 
 use anyhow::Context;
-use std::fs;
-use std::path::PathBuf;
-use std::{env, path::Path, sync::Arc};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{mpsc, Mutex};
+use hyprland::data::{Clients, Client};
+use hyprland::shared::{HyprData, Address};
+use hyprland::dispatch::{Dispatch, DispatchType};
+use hyprland::dispatch::WindowIdentifier;
+use std::collections::HashMap;
 
-const SOCKET_PATH: &str = "/tmp/atosaki_hypr.sock";
+
 pub struct Hyprland {
-    pub session: Arc<Mutex<Session>>,
-    pub sender: mpsc::Sender<SessionCmd>,
 }
 
 #[repr(u32)]
@@ -35,198 +31,46 @@ impl EventType {
     }
 }
 
-impl Hyprland {
-    async fn handle_client(stream: UnixStream, session: Arc<Mutex<Session>>) -> anyhow::Result<()> {
-        let (reader, _writer) = stream.into_split();
-        let mut reader = BufReader::new(reader);
-        let mut buffer = vec![0; 1024];
+impl WindowManager for Hyprland {
+    async fn update_session(&self) -> (HashMap<String, Window>, anyhow::Result<bool>) {
+        let clients = Clients::get_async().await.unwrap();
 
-        while let Ok(size) = reader.read(&mut buffer).await {
-            if size > 0 {
-                let req = u32::from_le_bytes(buffer[0..4].try_into()?);
-                let data = parse_data(&buffer[..size]);
-                let mut sess = session.lock().await;
-                match EventType::from_u32(req) {
-                    Some(EventType::Add | EventType::Update) => {
-                        sess.update_win(data?);
-                    }
-                    Some(EventType::Delete) => {
-                        sess.delete_win(data?.address);
-                    }
-                    None => (),
-                }
-            }
-        }
-        Ok(())
+        let new_data: HashMap<String, Window> = clients
+            .into_iter()
+            .map(|w| (w.address.to_string(), Window::from(w)))
+            .collect();
+
+        (new_data, Ok(true))
     }
+    async fn open_session(&self, w_data: &HashMap<String, Window>) -> anyhow::Result<bool> {
+        let clients = Clients::get_async().await.unwrap();
+        let new_data: HashMap<String, Window> = clients
+            .into_iter()
+            .map(|w| (w.address.to_string(), Window::from(w)))
+            .collect();
 
-    pub async fn run(&self, mut rx: mpsc::Receiver<SessionCmd>) -> anyhow::Result<()> {
-        let xdg_runtime_dir = env::var("XDG_RUNTIME_DIR").context("XDG_RUNTIME_DIR not set")?;
 
-        let hyprland_instance_signature = env::var("HYPRLAND_INSTANCE_SIGNATURE")
-            .context("HYPRLAND_INSTANCE_SIGNATURE not set")?;
-
-        let mut path = PathBuf::from(xdg_runtime_dir);
-        path.push("hypr");
-        path.push(&hyprland_instance_signature);
-        path.push(".socket.sock");
-
-        if Path::new(SOCKET_PATH).exists() {
-            fs::remove_file(SOCKET_PATH).context(format!(
-                "Failed to remove stale Unix socket file {}",
-                SOCKET_PATH
-            ))?;
-        };
-
-        let listener = UnixListener::bind(SOCKET_PATH)
-            .context(format!("Failed to bind socket {}", SOCKET_PATH))?;
-
-        loop {
-            tokio::select! {
-                Some(command) = rx.recv() => {
-                    match command {
-                        SessionCmd::Open => {
-                            for (_, window) in &self.session.lock().await.window_data {
-                                let command = format!(
-                                    "dispatch exec [workspace {} silent; float; size {}, {}; move {}, {}; pseudo;] {}",
-                                    window.workspace,
-                                    window.size[0], window.size[1],
-                                    window.at[0], window.at[1],
+        for (_, window) in w_data {
+            if let Some(_) = new_data.get(&window.address) {
+                continue;
+            }
+            let command = format!(
+                " [workspace {} silent; float; size {}, {}; move {}, {}; unset float] {}",
+                                    window.workspace + 1,
+                                    window.size.0, window.size.1,
+                                    window.at.0, window.at.1,
                                     window.program.cmdline
                                 );
-                                // prepare the command and run as a batch. Don't execute this in
-                                // the mutex lock
-                                let mut hypr_sk = UnixStream::connect(Path::new(&path)).await
-                                    .context(format!("Failed to connect to Hyprland socket {:?}", path))?;
-                                hypr_sk.write_all(command.as_bytes()).await
-                                    .context(format!("Failed to write command {} to Hyprland socket {:?})", command, path))?;
-                            }
-                        }
-                        SessionCmd::Close => {
-                            todo!()
-                        }
-                    }
-                },
-                res = listener.accept() => {
-                    let sess = Arc::clone(&self.session);
-                    let (stream, _) = res?;
-                    tokio::spawn(async move {
-                        if let Err(e) = Self::handle_client(stream, sess).await {
-                            eprintln!("Error handling client: {}", e);
-                        }
-                    });
-                }
-            }
+            println!("{}", command);
+            Dispatch::call_async(DispatchType::Exec(&command)).await?;
         }
+        Ok(true)
     }
-}
 
-impl WindowManager for Hyprland {
-    async fn send_command(&self, command: SessionCmd) {
-        if let Err(e) = self.sender.send(command).await {
-            eprintln!("Failed to send command: {:?}", e);
+    async fn close_session(&self, w_data: &HashMap<String, Window>) -> anyhow::Result<bool> {
+        for (_, window) in w_data {
+            Dispatch::call_async(DispatchType::CloseWindow(WindowIdentifier::Address(Address::new(window.address.clone())))).await?;
         }
+        Ok(true)
     }
-}
-
-fn parse_data(buffer: &[u8]) -> anyhow::Result<Window> {
-    use std::convert::TryInto;
-    let mut offset = 4;
-
-    let read_u64 = |offset: &mut usize| -> anyhow::Result<u64> {
-        let bytes: [u8; 8] = buffer
-            .get(*offset..*offset + 8)
-            .context(format!(
-                "Failed to access buffer slice of 8 bytes at offset {}..{}",
-                *offset,
-                *offset + 8
-            ))?
-            .try_into()
-            .context(format!(
-                "Failed to parse u64 from buffer on offset {}",
-                *offset
-            ))?;
-
-        let val = u64::from_le_bytes(bytes);
-        *offset += 8;
-        Ok(val)
-    };
-    let read_i32 = |offset: &mut usize| -> anyhow::Result<i32> {
-        let bytes: [u8; 4] = buffer
-            .get(*offset..*offset + 4)
-            .context(format!(
-                "Failed to access buffer slice of 4 bytes at offset {}..{}",
-                *offset,
-                *offset + 4
-            ))?
-            .try_into()
-            .context(format!(
-                "Failed to parse i32 from buffer on offset {}",
-                *offset
-            ))?;
-
-        let val = i32::from_le_bytes(bytes);
-        *offset += 4;
-        Ok(val)
-    };
-
-    let read_bool = |offset: &mut usize| -> anyhow::Result<bool> {
-        let val = buffer.get(*offset).map(|&val| val != 0).context(format!(
-            "Failed to parse bool from buffer on offset {}",
-            *offset
-        ))?;
-        *offset += 1;
-        Ok(val)
-    };
-
-    let read_string = |offset: &mut usize| -> anyhow::Result<String> {
-        let bytes: [u8; 4] = buffer
-            .get(*offset..*offset + 4)
-            .context(format!(
-                "Failed to access buffer slice of 4 bytes at offset {}..{}",
-                *offset,
-                *offset + 4
-            ))?
-            .try_into()
-            .context(format!(
-                "Failed to parse string length from buffer on offset {}",
-                *offset
-            ))?;
-        let len = u32::from_le_bytes(bytes);
-        *offset += 4;
-
-        let str_bytes = buffer
-            .get(*offset..*offset + len as usize)
-            .context(format!(
-                "Failed to access string slice of length {} bytes at offset {}..{}",
-                len,
-                *offset,
-                *offset + 4
-            ))?;
-
-        *offset += len as usize;
-        Ok(String::from_utf8_lossy(str_bytes).to_string())
-    };
-
-    Ok(Window {
-        address: read_u64(&mut offset)?,
-        at: [read_i32(&mut offset)?, read_i32(&mut offset)?],
-        size: [read_i32(&mut offset)?, read_i32(&mut offset)?],
-        monitor: read_u64(&mut offset)?,
-        workspace: read_i32(&mut offset)?,
-        class: read_string(&mut offset)?,
-        title: read_string(&mut offset)?,
-        init_class: read_string(&mut offset)?,
-        init_title: read_string(&mut offset)?,
-        pinned: read_bool(&mut offset)?,
-        fullscreen: read_bool(&mut offset)?,
-        wtype: WinType::Plain,
-        program: Program {
-            pid: read_i32(&mut offset)?,
-            shell_id: 0,
-            cwd: String::new(),
-            exe: String::new(),
-            cmdline: String::new(),
-        },
-    })
 }

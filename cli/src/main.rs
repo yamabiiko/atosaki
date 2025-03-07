@@ -1,18 +1,27 @@
-use std::io::prelude::*;
 use std::os::unix::net::UnixStream;
+use std::io::prelude::*;
+use crate::commands::{Cli, Commands};
+use clap::Parser;
 
 mod commands;
 
 const SOCKET_PATH: &str = "/tmp/atosakid";
 
-fn main() -> std::io::Result<()> {
+fn main() -> anyhow::Result<()> {
     let mut stream = UnixStream::connect(SOCKET_PATH)?;
-    //let send = vec![0];
 
-    //stream.write_all(&send).unwrap();
-    let send = vec![1];
-    stream.write_all(&send).unwrap();
+    let args = Cli::parse();
+    match args.command {
+        Commands::Save => {
+            stream.write_all(&vec![0])?;
+        }
+        Commands::Load => {
+            stream.write_all(&vec![1])?;
+        }
+        Commands::Replace => {
+            stream.write_all(&vec![2])?;
+        }
+    }
 
-    //todo!();
     Ok(())
 }

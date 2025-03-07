@@ -7,25 +7,34 @@ use tokio::process::Command;
 use crate::window::{WinType, Window};
 
 use crate::config::General;
+use crate::manager::WindowManager;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Session {
-    pub window_data: HashMap<u64, Window>,
+pub struct Session<WindowManager> {
+    pub window_data: HashMap<String, Window>,
     config: General,
+    manager: WindowManager,
 }
 
-impl Session {
-    pub fn new(config: General) -> Self {
+impl<T: WindowManager> Session<T> {
+    pub fn new(config: General, manager: T) -> Self {
         Self {
             window_data: HashMap::new(),
             config,
+            manager,
         }
     }
-    pub async fn save(&self, file: &str) -> anyhow::Result<()> {
+
+    pub async fn save(&mut self, file: &str) -> anyhow::Result<()> {
+
+        self.window_data = self.manager.update_session().await.0;
+        self.window_data.iter_mut().for_each(|(_, w)| w.set_program_type(&self.config));
+
         let mut file = OpenOptions::new()
             .write(true)
-            .append(false)
+            .create(true)
+            .truncate(true)
             .open(file)
             .context(format!("Cannot open file {} for saving", file))?;
         let encoded: Vec<u8> = bincode::serialize(&self.window_data)
@@ -35,7 +44,7 @@ impl Session {
             .window_data
             .iter()
             .filter_map(|(_, win)| match &win.wtype {
-                WinType::CliApp(cmd) => {
+                WinType::CliApp(Some(cmd)) => {
                     Some(run_command(General::replace_cmd(&cmd.save_cmd, &win)))
                 }
                 WinType::App(app) => Some(run_command(General::replace_cmd(&app.save_cmd, &win))),
@@ -67,7 +76,42 @@ impl Session {
             .iter_mut()
             .filter_map(|(_, win)| match &win.wtype {
                 WinType::CliApp(cmd) => {
-                    win.program.cmdline = self.config.terminal.prepare_cli(&cmd.restore_cmd, win);
+                    win.program.cmdline = match cmd {
+                        Some(cmd) => self.config.terminal.prepare_cli(&cmd.restore_cmd, win),
+                        None => self.config.terminal.prepare_cli(&win.program.cmdline, win)
+                    };
+                    None
+                }
+                WinType::App(app) => Some(General::replace_cmd(&app.restore_cmd, win)),
+
+                WinType::Terminal => None,
+                _ => None,
+            })
+            .collect();
+        self.manager.open_session(&self.window_data).await?;
+
+        Ok(())
+    }
+
+    pub async fn replace(&mut self, file: &str) -> anyhow::Result<()> {
+        let mut file = File::open(file)?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)?;
+
+        self.window_data = bincode::deserialize(&buffer).context(format!(
+            "Cannot deserialize bincode from saved session file {:?}",
+            file
+        ))?;
+
+        let _tasks: Vec<_> = self
+            .window_data
+            .iter_mut()
+            .filter_map(|(_, win)| match &win.wtype {
+                WinType::CliApp(cmd) => {
+                    win.program.cmdline = match cmd {
+                        Some(cmd) => self.config.terminal.prepare_cli(&cmd.restore_cmd, win),
+                        None => self.config.terminal.prepare_cli(&win.program.cmdline, win)
+                    };
                     None
                 }
                 WinType::App(app) => Some(General::replace_cmd(&app.restore_cmd, win)),
@@ -77,18 +121,9 @@ impl Session {
             })
             .collect();
 
+        self.manager.close_session(&self.manager.update_session().await.0).await?;
+        self.manager.open_session(&self.window_data).await?;
         Ok(())
-    }
-
-    pub fn update_win(&mut self, mut window: Window) -> bool {
-        window.set_program_type(&self.config);
-        self.window_data.insert(window.address, window);
-        true
-    }
-
-    pub fn delete_win(&mut self, addr: u64) -> bool {
-        self.window_data.remove_entry(&addr);
-        true
     }
 }
 

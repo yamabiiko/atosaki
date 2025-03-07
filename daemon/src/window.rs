@@ -1,27 +1,27 @@
-//use std::process; // replace with nix ?
 use serde::{Deserialize, Serialize};
+use hyprland::data::Client;
 
 use crate::config::general::{App as CApp, Cmd};
 use crate::config::General;
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Window {
-    pub address: u64,
-    pub at: [i32; 2],
-    pub size: [i32; 2],
-    pub monitor: u64,
+    pub address: String,
+    pub at: (i16, i16),
+    pub size: (i16, i16),
+    pub monitor: i128,
     pub workspace: i32,
     pub class: String,
     pub title: String,
     pub init_class: String,
     pub init_title: String,
     pub pinned: bool,
-    pub fullscreen: bool,
+    pub fullscreen: u8,
     pub program: Program,
     pub wtype: WinType,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Program {
     pub shell_id: i32,
     pub pid: i32,
@@ -30,10 +30,10 @@ pub struct Program {
     pub cmdline: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WinType {
     Terminal,
-    CliApp(Cmd),
+    CliApp(Option<Cmd>),
     App(CApp),
     Plain,
 }
@@ -53,9 +53,8 @@ impl Window {
                 if let Some(cpid) = cpid.first() {
                     self.program.cmdline = get_cmdline(*cpid).unwrap();
                     self.program.pid = *cpid;
-                    if let Some(cmd) = config.cmds.iter().find(|cmd| cmd.is_match(&self)) {
-                        self.wtype = WinType::CliApp(cmd.clone());
-                    }
+                    let cli_app = config.cmds.iter().find(|cmd| cmd.is_match(&self)).map(|cmd| cmd.clone());
+                    self.wtype = WinType::CliApp(cli_app);
                 }
             }
         } else {
@@ -93,5 +92,31 @@ fn get_cmdline(pid: i32) -> Option<String> {
             }
         }
         Err(_) => None,
+    }
+}
+
+impl From<Client> for Window {
+    fn from(client: Client) -> Self {
+        Window {
+            address: client.address.to_string(),
+            at: client.at,
+            size: client.size,
+            monitor: client.monitor,
+            workspace: client.workspace.id,
+            class: client.class,
+            title: client.title,
+            init_title: client.initial_title,
+            init_class: client.initial_class,
+            pinned: client.pinned,
+            fullscreen: 0, //client.fullscreen,
+            program: Program {
+                shell_id: i32::default(),
+                pid: client.pid,
+                cwd: String::default(),
+                exe: String::default(),
+                cmdline: String::default(),
+            },
+            wtype: WinType::Plain,
+        }
     }
 }
