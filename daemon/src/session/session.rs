@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Context};
-use std::collections::HashMap;
+use std::collections::BTreeSet;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use tokio::process::Command;
 
-use crate::window::{WinType, Window};
+use crate::window::{WinType, WindowRegistry};
 
 use crate::config::General;
 use crate::manager::WindowManager;
@@ -12,24 +12,24 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Session<WindowManager> {
-    pub window_data: HashMap<String, Window>,
-    config: General,
+    registry: WindowRegistry,
     manager: WindowManager,
 }
 
 impl<T: WindowManager> Session<T> {
     pub fn new(config: General, manager: T) -> Self {
         Self {
-            window_data: HashMap::new(),
-            config,
+            registry: WindowRegistry::new(config),
             manager,
         }
     }
 
     pub async fn save(&mut self, file: &str) -> anyhow::Result<()> {
-
-        self.window_data = self.manager.update_session().await.0;
-        self.window_data.iter_mut().for_each(|(_, w)| w.set_program_type(&self.config));
+        let fetched = self.manager.fetch_windows().await?;
+        self.registry.update(fetched);
+        // we only need to set this on save
+        self.registry.set_program_type();
+        self.registry.set_cmdline();
 
         let mut file = OpenOptions::new()
             .write(true)
@@ -37,23 +37,12 @@ impl<T: WindowManager> Session<T> {
             .truncate(true)
             .open(file)
             .context(format!("Cannot open file {} for saving", file))?;
-        let encoded: Vec<u8> = bincode::serialize(&self.window_data)
+
+        let encoded: Vec<u8> = bincode::serialize(&self.registry)
             .context(format!("Failed to serialize window data while saving"))?;
 
-        let tasks: Vec<_> = self
-            .window_data
-            .iter()
-            .filter_map(|(_, win)| match &win.wtype {
-                WinType::CliApp(Some(cmd)) => {
-                    Some(run_command(General::replace_cmd(&cmd.save_cmd, &win)))
-                }
-                WinType::App(app) => Some(run_command(General::replace_cmd(&app.save_cmd, &win))),
-                _ => None,
-            })
-            .collect();
-
-        for t in tasks {
-            let _ = t.await;
+        for t in self.registry.on_save() {
+            let _ = run_command(t).await;
         }
 
         file.write_all(&encoded)
@@ -66,30 +55,17 @@ impl<T: WindowManager> Session<T> {
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
 
-        self.window_data = bincode::deserialize(&buffer).context(format!(
+        let saved_win: WindowRegistry = bincode::deserialize(&buffer).context(format!(
             "Cannot deserialize bincode from saved session file {:?}",
             file
         ))?;
 
-        let _tasks: Vec<_> = self
-            .window_data
-            .iter_mut()
-            .filter_map(|(_, win)| match &win.wtype {
-                WinType::CliApp(cmd) => {
-                    win.program.cmdline = match cmd {
-                        Some(cmd) => self.config.terminal.prepare_cli(&cmd.restore_cmd, win),
-                        None => self.config.terminal.prepare_cli(&win.program.cmdline, win)
-                    };
-                    None
-                }
-                WinType::App(app) => Some(General::replace_cmd(&app.restore_cmd, win)),
+        let fetched = self.manager.fetch_windows().await?;
+        self.registry.update(fetched);
 
-                WinType::Terminal => None,
-                _ => None,
-            })
-            .collect();
-        self.manager.open_session(&self.window_data).await?;
+        let diff = saved_win.difference(&self.registry);
 
+        self.manager.open_windows(diff.win_vec()).await?;
         Ok(())
     }
 
@@ -98,31 +74,16 @@ impl<T: WindowManager> Session<T> {
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;
 
-        self.window_data = bincode::deserialize(&buffer).context(format!(
+        let saved_win: WindowRegistry = bincode::deserialize(&buffer).context(format!(
             "Cannot deserialize bincode from saved session file {:?}",
             file
         ))?;
 
-        let _tasks: Vec<_> = self
-            .window_data
-            .iter_mut()
-            .filter_map(|(_, win)| match &win.wtype {
-                WinType::CliApp(cmd) => {
-                    win.program.cmdline = match cmd {
-                        Some(cmd) => self.config.terminal.prepare_cli(&cmd.restore_cmd, win),
-                        None => self.config.terminal.prepare_cli(&win.program.cmdline, win)
-                    };
-                    None
-                }
-                WinType::App(app) => Some(General::replace_cmd(&app.restore_cmd, win)),
+        let fetched = self.manager.fetch_windows().await?;
+        self.registry.update(fetched);
 
-                WinType::Terminal => None,
-                _ => None,
-            })
-            .collect();
-
-        self.manager.close_session(&self.manager.update_session().await.0).await?;
-        self.manager.open_session(&self.window_data).await?;
+        self.manager.close_windows(self.registry.win_vec()).await?;
+        self.manager.open_windows(saved_win.win_vec()).await?;
         Ok(())
     }
 }

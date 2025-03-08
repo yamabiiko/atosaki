@@ -18,7 +18,6 @@ use crate::hyprland::hyprland::Hyprland;
 use crate::manager::WindowManager;
 use crate::session::session::Session;
 
-
 const CONF: &str = "/home/yamabiko/.config/atosaki/config.toml";
 const SOCKET_LIST: &str = "/tmp/atosakid";
 const SAVE_FILE: &str = "/home/yamabiko/example";
@@ -72,12 +71,10 @@ async fn handle_client<T: WindowManager>(
             );
             match ClientReq::from_u32(req) {
                 Some(ClientReq::Save) => {
-                    println!("Trying to save");
                     session.save(SAVE_FILE).await?;
                     ()
                 }
                 Some(ClientReq::Load) => {
-                    println!("Trying to load");
                     session.load(SAVE_FILE).await?;
                     ()
                 }

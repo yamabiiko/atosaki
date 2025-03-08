@@ -12,5 +12,5 @@ pub struct Cli {
 pub enum Commands {
     Save,
     Load,
-    Replace
+    Replace,
 }

@@ -4,36 +4,38 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct General {
-    pub apps: Vec<App>,
-    pub cmds: Vec<Cmd>,
+    pub app: Vec<App>,
+    pub cli: Vec<Cli>,
     pub terminal: Terminal,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Cmd {
-    pub exe: String,
-    pub save_cmd: String,
-    pub restore_cmd: String,
+pub struct Cli {
+    pub match_exe: String,
+    pub exec: Option<String>,
+    pub on_save: Option<String>,
+    pub on_restore: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct App {
     pub class: String,
     pub title: String,
-    pub save_cmd: String,
-    pub restore_cmd: String,
+    pub exec: Option<String>,
+    pub on_save: Option<String>,
+    pub on_restore: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Terminal {
     pub class: String,
-    pub exe: String,
-    pub restore: String,
+    pub bin: String,
+    pub restore_cmd: String,
 }
 
 // for now, we don't want finegrained matching, but it should be configurable
 impl General {
-    pub fn replace_cmd(cmd: &str, win: &Window) -> String {
+    pub fn expand_vars(cmd: &str, win: &Window) -> String {
         cmd.replace("$$shell_id$$", &win.program.shell_id.to_string())
             .replace("$$pid$$", &win.program.pid.to_string())
     }
@@ -46,14 +48,14 @@ impl Terminal {
     }
 
     pub fn prepare_cli(&self, cmd: &str, win: &Window) -> String {
-        self.restore
-            .replace("$$cmd$$", &General::replace_cmd(cmd, win))
+        self.restore_cmd
+            .replace("$$cmd$$", &General::expand_vars(cmd, win))
     }
 }
 
-impl Cmd {
+impl Cli {
     pub fn is_match(&self, win: &Window) -> bool {
-        let rcmd = Regex::new(&format!(r"{}", regex::escape(&self.exe))).unwrap();
+        let rcmd = Regex::new(&format!(r"{}", regex::escape(&self.match_exe))).unwrap();
         rcmd.is_match(&win.program.cmdline)
     }
 }

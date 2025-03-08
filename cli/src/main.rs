@@ -1,7 +1,7 @@
-use std::os::unix::net::UnixStream;
-use std::io::prelude::*;
 use crate::commands::{Cli, Commands};
 use clap::Parser;
+use std::io::prelude::*;
+use std::os::unix::net::UnixStream;
 
 mod commands;
 
